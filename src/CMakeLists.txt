@@ -1,0 +1,1 @@
+add_library(kratos-runtime SHARED control.hh control.cc)
