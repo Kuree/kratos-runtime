@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include "httplib.h"
 #include "std/vpi_user.h"
+#include "sim.hh"
 #include "util.hh"
 #include <unistd.h>
 
@@ -11,12 +12,11 @@ constexpr uint16_t runtime_port = 8888;
 
 std::unique_ptr<httplib::Server> http_server = nullptr;
 std::unique_ptr<httplib::Client> http_client = nullptr;
-std::unordered_set<uint32_t> break_points;
 SpinLock runtime_lock;
 std::thread runtime_thread;
 
 void breakpoint_trace(uint32_t id) {
-    if (break_points.find(id) != break_points.end()) {
+    if (should_continue_simulation(id)) {
         // tell the client that we have hit a clock
         if (http_client) {
             http_client->Post("/status/breakpoint", "", "text/plain");
@@ -55,15 +55,15 @@ void initialize_runtime() {
         auto num = req.matches[1];
         auto result = get_breakpoint(num, res);
 
-        if (result.first) break_points.emplace(result.second);
+        if (result.first) add_break_point(result.second);
     });
 
     http_server->Post(R"(/breakpoint/remove/(\d+))", [](const Request &req, Response &res) {
         auto num = req.matches[1];
         auto result = get_breakpoint(num, res);
 
-        if (result.first && break_points.find(result.second) != break_points.end())
-            break_points.erase(result.second);
+        if (result.first)
+            remove_break_point(result.second);
     });
 
     http_server->Post("/continue", [](const Request &req, Response &res) {
@@ -123,6 +123,7 @@ PLI_INT32 teardown_server_vpi(s_cb_data *) {
     return 0;
 }
 
+// verilator doesn't like this kind of registration
 void initialize_runtime_vpi() {
     // register the initialize server when the simulation started
     s_cb_data cb_data_init;
@@ -137,7 +138,7 @@ void initialize_runtime_vpi() {
         std::cerr << "ERROR: failed to register runtime initialization" << std::endl;
     }
     // clear the handle since we don't need it
-    // vpi_free_object(res);
+    vpi_free_object(res);
 
     // register the initialize server when the simulation started
     s_cb_data cb_data_teardown;
@@ -151,7 +152,7 @@ void initialize_runtime_vpi() {
     if (!res) {
         std::cerr << "ERROR: failed to register runtime initialization" << std::endl;
     }
-    // vpi_free_object(res);
+    vpi_free_object(res);
 }
 
 // these are system level calls. register it to the simulator
