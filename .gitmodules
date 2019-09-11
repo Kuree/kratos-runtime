@@ -4,3 +4,6 @@
 [submodule "extern/cpp-httplib"]
 	path = extern/cpp-httplib
 	url = https://github.com/yhirose/cpp-httplib
+[submodule "extern/fmt"]
+	path = extern/fmt
+	url = https://github.com/fmtlib/fmt

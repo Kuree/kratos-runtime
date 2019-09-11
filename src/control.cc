@@ -1,11 +1,12 @@
 #include "control.hh"
+#include <unistd.h>
 #include <iostream>
 #include <unordered_set>
+#include "fmt/format.h"
 #include "httplib.h"
-#include "std/vpi_user.h"
 #include "sim.hh"
+#include "std/vpi_user.h"
 #include "util.hh"
-#include <unistd.h>
 
 // constants
 constexpr uint16_t runtime_port = 8888;
@@ -16,10 +17,10 @@ SpinLock runtime_lock;
 std::thread runtime_thread;
 
 void breakpoint_trace(uint32_t id) {
-    if (should_continue_simulation(id)) {
+    if (!should_continue_simulation(id)) {
         // tell the client that we have hit a clock
         if (http_client) {
-            http_client->Post("/status/breakpoint", "", "text/plain");
+            http_client->Post("/status/breakpoint", fmt::format("{0}", id), "text/plain");
         }
         // hold the lock
         runtime_lock.lock();
@@ -46,6 +47,21 @@ std::pair<bool, uint32_t> get_breakpoint(const std::string &num, httplib::Respon
     return {!error, break_point};
 }
 
+std::pair<bool, int64_t> get_value(const std::string &handle_name) {
+    auto handle = const_cast<char *>(handle_name.c_str());
+    vpiHandle vh = vpi_handle_by_name(handle, nullptr);
+    if (!vh) {
+        // not found
+        return {false, 0};
+    } else {
+        s_vpi_value v;
+        v.format = vpiIntVal;
+        vpi_get_value(vh, &v);
+        int64_t result = v.value.integer;
+        return {true, result};
+    }
+}
+
 void initialize_runtime() {
     using namespace httplib;
     http_server = std::unique_ptr<Server>(new Server());
@@ -56,14 +72,27 @@ void initialize_runtime() {
         auto result = get_breakpoint(num, res);
 
         if (result.first) add_break_point(result.second);
+        printf("Breakpoint inserted to %d\n", result.second);
     });
 
     http_server->Post(R"(/breakpoint/remove/(\d+))", [](const Request &req, Response &res) {
         auto num = req.matches[1];
         auto result = get_breakpoint(num, res);
 
-        if (result.first)
-            remove_break_point(result.second);
+        if (result.first) remove_break_point(result.second);
+    });
+
+    http_server->Get(R"(/value/([\w.$]+))", [](const Request &req, Response &res) {
+        auto name = req.matches[1];
+        auto result = get_value(name);
+        if (result.first) {
+            res.status = 200;
+            auto content = fmt::format("{0}", result.second);
+            res.set_content(content, "text/plain");
+        } else {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+        }
     });
 
     http_server->Post("/continue", [](const Request &req, Response &res) {
@@ -72,7 +101,7 @@ void initialize_runtime() {
         res.set_content("Okay", "text/plain");
     });
 
-    http_server->Post("/connect/", [](const Request &req, Response &res) {
+    http_server->Post("/connect", [](const Request &req, Response &res) {
         // parse the content
         auto body = req.body;
         auto tokens = get_tokens(body, ":");
@@ -91,8 +120,10 @@ void initialize_runtime() {
             http_client = nullptr;
             goto error;
         }
-        // unblock it
-        runtime_lock.unlock();
+        res.status = 200;
+        res.set_content("Okay", "text/plain");
+        printf("Debugger connected\n");
+        return;
     error:
         res.status = 401;
         res.set_content("ERROR", "text/plain");

@@ -19,11 +19,11 @@ int main(int argc, char **argv) {
     initialize_runtime();
 	Vtest *tb = new Vtest();
 
-    tb->a = 0;
-    tb->eval();
-    main_time++;
-    tb->a = 1;
-    tb->eval();
+    for (int i = 0; i < 4; i++) {
+        tb->in1 = i;
+        tb->in2 = i;
+        tb->eval();
+    }
     tb->final();
 
     delete tb;
