@@ -1,6 +1,7 @@
 #include "control.hh"
 #include <unistd.h>
 #include <iostream>
+#include <unordered_map>
 #include <unordered_set>
 #include "fmt/format.h"
 #include "httplib.h"
@@ -15,6 +16,8 @@ std::unique_ptr<httplib::Server> http_server = nullptr;
 std::unique_ptr<httplib::Client> http_client = nullptr;
 SpinLock runtime_lock;
 std::thread runtime_thread;
+std::unordered_map<vpiHandle, std::string> monitored_signal_names;
+std::unordered_map<std::string, vpiHandle> signal_call_back;
 
 void breakpoint_trace(uint32_t id) {
     if (!should_continue_simulation(id)) {
@@ -62,6 +65,43 @@ std::pair<bool, int64_t> get_value(const std::string &handle_name) {
     }
 }
 
+int monitor_signal(p_cb_data cb_data_p) {
+    printf("%s\n", cb_data_p->user_data);
+    return 0;
+}
+
+bool setup_monitor(const std::string &signal_name) {
+    // get the handle
+    auto handle = const_cast<char *>(signal_name.c_str());
+    printf("%s\n", handle);
+    vpiHandle vh = vpi_handle_by_name(handle, nullptr);
+    if (!vh) {
+        // not found
+        return false;
+    } else {
+        if (signal_call_back.find(signal_name) != signal_call_back.end()) return true;
+        s_vpi_time time_s = {vpiSimTime};
+        s_vpi_value value_s = {vpiBinStrVal};
+
+        s_cb_data cb_data_s = {cbValueChange, monitor_signal, nullptr, &time_s, &value_s};
+        cb_data_s.obj = vh;
+        // use the global allocated string to avoid memory leak
+        monitored_signal_names[vh] = signal_name;
+        auto &str_p = monitored_signal_names.at(vh);
+        auto char_p = const_cast<char *>(str_p.c_str());
+        cb_data_s.user_data = char_p;
+        auto r = vpi_register_cb(&cb_data_s);
+        signal_call_back.emplace(signal_name, r);
+        return true;
+    }
+}
+
+bool remove_monitor(const std::string &signal_name) {
+    if (signal_call_back.find(signal_name) == signal_call_back.end()) return false;
+    auto cb_vh = signal_call_back.at(signal_name);
+    return vpi_remove_cb(cb_vh) == 1;
+}
+
 void initialize_runtime() {
     using namespace httplib;
     http_server = std::unique_ptr<Server>(new Server());
@@ -75,7 +115,7 @@ void initialize_runtime() {
         printf("Breakpoint inserted to %d\n", result.second);
     });
 
-    http_server->Post(R"(/breakpoint/remove/(\d+))", [](const Request &req, Response &res) {
+    http_server->Delete(R"(/breakpoint/(\d+))", [](const Request &req, Response &res) {
         auto num = req.matches[1];
         auto result = get_breakpoint(num, res);
 
@@ -89,6 +129,30 @@ void initialize_runtime() {
             res.status = 200;
             auto content = fmt::format("{0}", result.second);
             res.set_content(content, "text/plain");
+        } else {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+        }
+    });
+
+    http_server->Post(R"(/monitor/([\w.$]+))", [](const Request &req, Response &res) {
+        auto name = req.matches[1];
+        auto result = setup_monitor(name);
+        if (result) {
+            res.status = 200;
+            res.set_content("Okay", "text/plain");
+        } else {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+        }
+    });
+
+    http_server->Delete(R"(/monitor/([\w.$]+))", [](const Request &req, Response &res) {
+        auto name = req.matches[1];
+        auto result = remove_monitor(name);
+        if (result) {
+            res.status = 200;
+            res.set_content("Okay", "text/plain");
         } else {
             res.status = 401;
             res.set_content("ERROR", "text/plain");

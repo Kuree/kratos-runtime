@@ -15,19 +15,21 @@ double sc_time_stamp () {       // Called by $time in Verilog
 }
 
 int main(int argc, char **argv) {
-	// Create an instance of our module under test
+    Vtest *tb = new Vtest();
+    // Verilated::internalsDump();  // See scopes to help debug
+    // Create an instance of our module under test
     initialize_runtime();
-	Vtest *tb = new Vtest();
 
     for (int i = 0; i < 4; i++) {
         tb->in1 = i;
         tb->in2 = i;
         tb->eval();
+        VerilatedVpi::callValueCbs(); // required to call callbacks
     }
     tb->final();
 
     delete tb;
     teardown_runtime();
 
-	exit(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
 }
