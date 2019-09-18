@@ -66,14 +66,17 @@ std::pair<bool, int64_t> get_value(const std::string &handle_name) {
 }
 
 int monitor_signal(p_cb_data cb_data_p) {
-    printf("%s\n", cb_data_p->user_data);
+    std::string signal_name = cb_data_p->user_data;
+    std::string value = cb_data_p->value->value.str;
+    if (http_client) {
+        http_client->Post(fmt::format("/value/{0}", signal_name).c_str(), value, "text/plain");
+    }
     return 0;
 }
 
 bool setup_monitor(const std::string &signal_name) {
     // get the handle
     auto handle = const_cast<char *>(signal_name.c_str());
-    printf("%s\n", handle);
     vpiHandle vh = vpi_handle_by_name(handle, nullptr);
     if (!vh) {
         // not found
