@@ -14,5 +14,6 @@ find_package(Threads REQUIRED)
 
 # extern library
 add_subdirectory(extern/fmt)
+add_subdirectory(extern/seasocks/)
 
 add_subdirectory(src)

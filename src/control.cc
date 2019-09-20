@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "fmt/format.h"
-#include "httplib.h"
+#include <thread>
 #include "sim.hh"
 #include "std/vpi_user.h"
 #include "util.hh"
@@ -12,8 +12,7 @@
 // constants
 constexpr uint16_t runtime_port = 8888;
 
-std::unique_ptr<httplib::Server> http_server = nullptr;
-std::unique_ptr<httplib::Client> http_client = nullptr;
+std::unique_ptr<seasocks::Server> ws_server = nullptr;
 SpinLock runtime_lock;
 std::thread runtime_thread;
 std::unordered_map<vpiHandle, std::string> monitored_signal_names;
@@ -106,8 +105,9 @@ bool remove_monitor(const std::string &signal_name) {
 }
 
 void initialize_runtime() {
-    using namespace httplib;
-    http_server = std::unique_ptr<Server>(new Server());
+    using namespace seasocks;
+    auto logger = std::make_shared<PrintfLogger>(Logger::Level::Error);
+    ws_server = std::unique_ptr<Server>(new Server(logger));
 
     // setup call backs
     http_server->Post(R"(/breakpoint/add/(\d+))", [](const Request &req, Response &res) {
@@ -197,7 +197,7 @@ void initialize_runtime() {
     });
 
     // start the http in a different thread
-    runtime_thread = std::thread([=]() { http_server->listen("0.0.0.0", runtime_port); });
+    runtime_thread = std::thread([=]() { ws_server->serve("0.0.0.0", runtime_port); });
 
     // by default it's locked
     runtime_lock.lock();
