@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD 17)
 # -fpic
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # statically link glibc
-set(CMAKE_EXE_LINKER_FLAGS " -static")
 set(STATIC_FLAG "-static-libgcc -static-libstdc++")
 
 # thread is requires
@@ -18,3 +17,5 @@ add_subdirectory(extern/sqlite)
 add_subdirectory(extern/json11)
 
 add_subdirectory(src)
+
+add_subdirectory(tests/postman)

@@ -1,5 +1,6 @@
 #include "control.hh"
 #include <unistd.h>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <unordered_map>
@@ -10,7 +11,6 @@
 #include "sim.hh"
 #include "std/vpi_user.h"
 #include "util.hh"
-#include <filesystem>
 
 // constants
 constexpr uint16_t runtime_port = 8888;
@@ -35,15 +35,21 @@ std::string get_breakpoint_value(uint32_t id) {
         for (auto const &[front_var, entry] : variables) {
             auto [handle_name, var] = entry;
             // decide if we need to append the top name
-            if (handle_name.substr(top_name_.size()) != top_name_) {
-                handle_name = fmt::format("{0}.{1}", top_name_, handle_name);
+            if (handle_name.size() < top_name_.size() ||
+                handle_name.substr(top_name_.size()) != top_name_) {
+                std::string format;
+                if (top_name_.back() == '.')
+                    format = "{0}{1}.{2}";
+                else
+                    format = "{0}.{1}.{2}";
+                handle_name = fmt::format(format, top_name_, handle_name, var);
             }
             vars.emplace_back(std::make_pair(front_var, handle_name));
         }
     }
 
     auto obj = json11::Json::object();
-    json11::Json result = json11::Json::object({{"id", fmt::format("%s", id)}, {"value", vars}});
+    json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)}, {"value", vars}});
     return result.dump();
 }
 
@@ -60,23 +66,28 @@ void breakpoint_trace(uint32_t id) {
 }
 
 std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Response &res) {
-    auto json = json11::Json(body);
+    std::string error;
+    auto json = json11::Json::parse(body, error);
     auto filename = json["filename"];
     auto line_num = json["line_num"];
-    if (!filename.is_null() && line_num.is_null()) {
+    if (error.empty() && !filename.is_null() && !line_num.is_null()) {
         auto const &filename_str = filename.string_value();
         auto line_num_int = line_num.int_value();
         if (db_) {
             auto bp = db_->get_breakpoint_id(filename_str, line_num_int);
             if (bp) {
                 res.status = 200;
-                res.set_content("Okay", "text/plain");
+                std::string s = get_breakpoint_value(bp.value());
+                res.set_content(s, "text/plain");
                 return bp;
             }
         }
     }
+    if (error.empty()) {
+        error = "ERROR";
+    }
     res.status = 401;
-    res.set_content("ERROR", "text/plain");
+    res.set_content(error, "text/plain");
     return std::nullopt;
 }
 
@@ -140,14 +151,12 @@ void initialize_runtime() {
     http_server = std::make_unique<Server>();
 
     // setup call backs
-    http_server->Post("/breakpoint/", [](const Request &req, Response &res) {
-        auto bp = get_breakpoint(res.body, res);
+    http_server->Post("/breakpoint", [](const Request &req, Response &res) {
+        auto bp = get_breakpoint(req.body, res);
         if (db_ && bp) {
             if (bp) {
                 add_break_point(*bp);
                 printf("Breakpoint inserted to %d\n", *bp);
-                res.status = 200;
-                res.set_content("Okay", "text/plain");
                 return;
             }
         } else {
@@ -156,14 +165,12 @@ void initialize_runtime() {
         }
     });
 
-    http_server->Delete("/breakpoint/", [](const Request &req, Response &res) {
-        auto bp = get_breakpoint(res.body, res);
+    http_server->Delete("/breakpoint", [](const Request &req, Response &res) {
+        auto bp = get_breakpoint(req.body, res);
         if (db_ && bp) {
             if (bp) {
                 remove_break_point(*bp);
                 printf("Breakpoint removed from %d\n", *bp);
-                res.status = 200;
-                res.set_content("Okay", "text/plain");
                 return;
             }
         } else {
@@ -218,7 +225,8 @@ void initialize_runtime() {
     http_server->Post("/connect", [](const Request &req, Response &res) {
         // parse the content
         auto const &body = req.body;
-        auto payload = json11::Json(body);
+        std::string err;
+        auto payload = json11::Json::parse(body, err);
         auto ip_json = payload["ip"];
         auto port_json = payload["port"];
         auto db_json = payload["database"];
@@ -238,7 +246,7 @@ void initialize_runtime() {
                 try {
                     http_client = std::make_unique<Client>(ip.c_str(), port);
                     // load up the database
-                    db_ = std::make_unique<Database>(db_json);
+                    db_ = std::make_unique<Database>(db_filename);
                 } catch (...) {
                     http_client = nullptr;
                     db_ = nullptr;
