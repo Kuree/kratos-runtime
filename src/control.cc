@@ -1,13 +1,16 @@
 #include "control.hh"
 #include <unistd.h>
 #include <iostream>
+#include <memory>
 #include <unordered_map>
-#include <unordered_set>
+#include "db.hh"
 #include "fmt/format.h"
 #include "httplib.h"
+#include "json11/json11.hpp"
 #include "sim.hh"
 #include "std/vpi_user.h"
 #include "util.hh"
+#include <filesystem>
 
 // constants
 constexpr uint16_t runtime_port = 8888;
@@ -18,36 +21,63 @@ SpinLock runtime_lock;
 std::thread runtime_thread;
 std::unordered_map<vpiHandle, std::string> monitored_signal_names;
 std::unordered_map<std::string, vpiHandle> signal_call_back;
+std::unique_ptr<Database> db_;
+// include the dot to make things easier
+std::string top_name_ = "TOP.";  // NOLINT
+
+std::pair<bool, int64_t> get_value(const std::string &handle_name);
+
+std::string get_breakpoint_value(uint32_t id) {
+    std::vector<std::pair<std::string, std::string>> vars;
+    std::map<std::string, std::pair<std::string, std::string>> variables;
+    if (db_) {
+        variables = db_->get_variable_mapping(id);
+        for (auto const &[front_var, entry] : variables) {
+            auto [handle_name, var] = entry;
+            // decide if we need to append the top name
+            if (handle_name.substr(top_name_.size()) != top_name_) {
+                handle_name = fmt::format("{0}.{1}", top_name_, handle_name);
+            }
+            vars.emplace_back(std::make_pair(front_var, handle_name));
+        }
+    }
+
+    auto obj = json11::Json::object();
+    json11::Json result = json11::Json::object({{"id", fmt::format("%s", id)}, {"value", vars}});
+    return result.dump();
+}
 
 void breakpoint_trace(uint32_t id) {
     if (!should_continue_simulation(id)) {
         // tell the client that we have hit a clock
         if (http_client) {
-            http_client->Post("/status/breakpoint", fmt::format("{0}", id), "text/plain");
+            auto content = get_breakpoint_value(id);
+            http_client->Post("/status/breakpoint", content, "text/plain");
         }
         // hold the lock
         runtime_lock.lock();
     }
 }
 
-std::pair<bool, uint32_t> get_breakpoint(const std::string &num, httplib::Response &res) {
-    bool error = false;
-    uint32_t break_point = 0;
-    try {
-        break_point = static_cast<uint32_t>(std::stoi(num));
-    } catch (const std::invalid_argument &) {
-        error = true;
-    } catch (const std::out_of_range &) {
-        error = false;
+std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Response &res) {
+    auto json = json11::Json(body);
+    auto filename = json["filename"];
+    auto line_num = json["line_num"];
+    if (!filename.is_null() && line_num.is_null()) {
+        auto const &filename_str = filename.string_value();
+        auto line_num_int = line_num.int_value();
+        if (db_) {
+            auto bp = db_->get_breakpoint_id(filename_str, line_num_int);
+            if (bp) {
+                res.status = 200;
+                res.set_content("Okay", "text/plain");
+                return bp;
+            }
+        }
     }
-    if (error) {
-        res.status = 401;
-        res.set_content("Error", "text/plain");
-    } else {
-        res.status = 200;
-        res.set_content("Okay", "text/plain");
-    }
-    return {!error, break_point};
+    res.status = 401;
+    res.set_content("ERROR", "text/plain");
+    return std::nullopt;
 }
 
 std::pair<bool, int64_t> get_value(const std::string &handle_name) {
@@ -84,7 +114,7 @@ bool setup_monitor(const std::string &signal_name) {
     } else {
         if (signal_call_back.find(signal_name) != signal_call_back.end()) return true;
         s_vpi_time time_s = {vpiSimTime};
-        s_vpi_value value_s = {vpiBinStrVal};
+        s_vpi_value value_s = {vpiIntVal};
 
         s_cb_data cb_data_s = {cbValueChange, monitor_signal, nullptr, &time_s, &value_s};
         cb_data_s.obj = vh;
@@ -107,22 +137,39 @@ bool remove_monitor(const std::string &signal_name) {
 
 void initialize_runtime() {
     using namespace httplib;
-    http_server = std::unique_ptr<Server>(new Server());
+    http_server = std::make_unique<Server>();
 
     // setup call backs
-    http_server->Post(R"(/breakpoint/add/(\d+))", [](const Request &req, Response &res) {
-        auto num = req.matches[1];
-        auto result = get_breakpoint(num, res);
-
-        if (result.first) add_break_point(result.second);
-        printf("Breakpoint inserted to %d\n", result.second);
+    http_server->Post("/breakpoint/", [](const Request &req, Response &res) {
+        auto bp = get_breakpoint(res.body, res);
+        if (db_ && bp) {
+            if (bp) {
+                add_break_point(*bp);
+                printf("Breakpoint inserted to %d\n", *bp);
+                res.status = 200;
+                res.set_content("Okay", "text/plain");
+                return;
+            }
+        } else {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+        }
     });
 
-    http_server->Delete(R"(/breakpoint/(\d+))", [](const Request &req, Response &res) {
-        auto num = req.matches[1];
-        auto result = get_breakpoint(num, res);
-
-        if (result.first) remove_break_point(result.second);
+    http_server->Delete("/breakpoint/", [](const Request &req, Response &res) {
+        auto bp = get_breakpoint(res.body, res);
+        if (db_ && bp) {
+            if (bp) {
+                remove_break_point(*bp);
+                printf("Breakpoint removed from %d\n", *bp);
+                res.status = 200;
+                res.set_content("Okay", "text/plain");
+                return;
+            }
+        } else {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+        }
     });
 
     http_server->Get(R"(/value/([\w.$]+))", [](const Request &req, Response &res) {
@@ -170,30 +217,43 @@ void initialize_runtime() {
 
     http_server->Post("/connect", [](const Request &req, Response &res) {
         // parse the content
-        auto body = req.body;
-        auto tokens = get_tokens(body, ":");
-        std::string ip, port_str;
-        uint32_t port;
-        // linux kernel style error handling
-        if (tokens.size() != 2) {
-            goto error;
+        auto const &body = req.body;
+        auto payload = json11::Json(body);
+        auto ip_json = payload["ip"];
+        auto port_json = payload["port"];
+        auto db_json = payload["database"];
+        bool has_error = false;
+        if (port_json.is_null() || ip_json.is_null() || db_json.is_null() ||
+            !port_json.is_number() || !ip_json.is_string() || !db_json.is_string()) {
+            has_error = true;
         }
-        ip = tokens[0];
-        port_str = tokens[1];
-        try {
-            port = std::stoi(port_str);
-            http_client = std::unique_ptr<Client>(new httplib::Client(ip.c_str(), port));
-        } catch (...) {
-            http_client = nullptr;
-            goto error;
+        if (!has_error) {
+            auto const &ip = ip_json.string_value();
+            auto port = port_json.number_value();
+            auto &db_filename = db_json.string_value();
+
+            if (!std::filesystem::exists(db_filename)) {
+                has_error = true;
+            } else {
+                try {
+                    http_client = std::make_unique<Client>(ip.c_str(), port);
+                    // load up the database
+                    db_ = std::make_unique<Database>(db_json);
+                } catch (...) {
+                    http_client = nullptr;
+                    db_ = nullptr;
+                    has_error = true;
+                }
+            }
         }
-        res.status = 200;
-        res.set_content("Okay", "text/plain");
-        printf("Debugger connected\n");
-        return;
-    error:
-        res.status = 401;
-        res.set_content("ERROR", "text/plain");
+        if (!has_error) {
+            res.status = 200;
+            res.set_content("Okay", "text/plain");
+            printf("Debugger connected\n");
+        } else {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+        }
     });
 
     // start the http in a different thread

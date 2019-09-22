@@ -4,3 +4,15 @@
 [submodule "extern/fmt"]
 	path = extern/fmt
 	url = https://github.com/fmtlib/fmt
+[submodule "extern/sqlite"]
+	path = extern/sqlite
+	url = https://github.com/Kuree/sqlite
+[submodule "extern/sqlite_orm"]
+	path = extern/sqlite_orm
+	url = https://github.com/fnc12/sqlite_orm
+[submodule "extern/kratos"]
+	path = extern/kratos
+	url = https://github.com/Kuree/kratos
+[submodule "extern/json11"]
+	path = extern/json11
+	url = https://github.com/dropbox/json11

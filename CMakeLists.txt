@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5.1)
 project(kratos_runtime CXX)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 # -fpic
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -14,5 +14,7 @@ find_package(Threads REQUIRED)
 
 # extern library
 add_subdirectory(extern/fmt)
+add_subdirectory(extern/sqlite)
+add_subdirectory(extern/json11)
 
 add_subdirectory(src)
