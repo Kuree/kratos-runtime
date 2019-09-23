@@ -11,19 +11,21 @@
 #include "sim.hh"
 #include "std/vpi_user.h"
 #include "util.hh"
+#include <mutex>
 
 // constants
 constexpr uint16_t runtime_port = 8888;
 
 std::unique_ptr<httplib::Server> http_server = nullptr;
 std::unique_ptr<httplib::Client> http_client = nullptr;
-SpinLock runtime_lock;
 std::thread runtime_thread;
 std::unordered_map<vpiHandle, std::string> monitored_signal_names;
 std::unordered_map<std::string, vpiHandle> signal_call_back;
 std::unique_ptr<Database> db_;
 // include the dot to make things easier
 std::string top_name_ = "TOP.";  // NOLINT
+// mutex
+std::mutex runtime_lock;
 
 std::pair<bool, int64_t> get_value(const std::string &handle_name);
 
@@ -58,7 +60,7 @@ void breakpoint_trace(uint32_t id) {
         // tell the client that we have hit a clock
         if (http_client) {
             auto content = get_breakpoint_value(id);
-            http_client->Post("/status/breakpoint", content, "text/plain");
+            http_client->Post("/status/breakpoint", content, "application/json");
         }
         // hold the lock
         runtime_lock.lock();
@@ -73,12 +75,18 @@ std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Respons
     if (error.empty() && !filename.is_null() && !line_num.is_null()) {
         auto const &filename_str = filename.string_value();
         auto line_num_int = line_num.int_value();
+        // hacky way
+        if (!db_) {
+            while(!db_) {
+                // sleep for 0.1 seconds
+                usleep(100000);
+            }
+        }
         if (db_) {
             auto bp = db_->get_breakpoint_id(filename_str, line_num_int);
             if (bp) {
                 res.status = 200;
-                std::string s = get_breakpoint_value(bp.value());
-                res.set_content(s, "text/plain");
+                res.set_content(fmt::format("{0}", bp.value()), "text/plain");
                 return bp;
             }
         }
@@ -89,6 +97,35 @@ std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Respons
     res.status = 401;
     res.set_content(error, "text/plain");
     return std::nullopt;
+}
+
+std::vector<uint32_t> get_breakpoint_filename(const std::string &body, httplib::Response &res) {
+    std::string error;
+    auto json = json11::Json::parse(body, error);
+    auto filename = json["filename"];
+    if (error.empty() && !filename.is_null()) {
+        auto const &filename_str = filename.string_value();
+        if (db_) {
+            res.status = 200;
+            // return a list of breakpoints
+            res.set_content("Okay", "text/plain");
+            auto bps = db_->get_all_breakpoints(filename_str);
+            struct BP {
+                uint32_t id;
+                [[nodiscard]] std::string to_json() const { return fmt::format("{0}", id); }
+            };
+            std::vector<BP> json_bp;
+            json_bp.reserve(bps.size());
+            for (auto const &bp : bps) {
+                json_bp.emplace_back(BP{bp});
+            }
+            std::string value = json11::Json(json_bp).dump();
+            return bps;
+        }
+    }
+    res.status = 401;
+    res.set_content("[]", "text/plain");
+    return {};
 }
 
 std::pair<bool, int64_t> get_value(const std::string &handle_name) {
@@ -151,17 +188,31 @@ void initialize_runtime() {
     http_server = std::make_unique<Server>();
 
     // setup call backs
-    http_server->Post("/breakpoint", [](const Request &req, Response &res) {
-        auto bp = get_breakpoint(req.body, res);
-        if (db_ && bp) {
-            if (bp) {
-                add_break_point(*bp);
-                printf("Breakpoint inserted to %d\n", *bp);
-                return;
-            }
-        } else {
+    http_server->Post(R"(/breakpoint/(\d+))", [](const Request &req, Response &res) {
+        auto num = req.matches[1];
+        try {
+            auto id = std::stoi(num);
+            add_break_point(id);
+            printf("Breakpoint inserted to %d\n", id);
+            res.status = 200;
+            res.set_content("Okay", "text/plain");
+            return;
+        } catch (...) {
             res.status = 401;
             res.set_content("ERROR", "text/plain");
+            return;
+        }
+    });
+
+    http_server->Get("/breakpoint", [](const Request &req, Response &res) {
+        auto bp = get_breakpoint(req.body, res);
+    });
+
+    http_server->Post("/breakpoint", [](const Request &req, Response &res) {
+        auto bp = get_breakpoint(req.body, res);
+        if (bp) {
+            add_break_point(bp.value());
+            printf("Breakpoint inserted to %d\n", bp.value());
         }
     });
 
@@ -176,6 +227,53 @@ void initialize_runtime() {
         } else {
             res.status = 401;
             res.set_content("ERROR", "text/plain");
+        }
+    });
+
+    http_server->Delete(R"(/breakpoint/(\d+))", [](const Request &req, Response &res) {
+        auto num = req.matches[1];
+        try {
+            auto id = std::stoi(num);
+            remove_break_point(id);
+            printf("Breakpoint removed from %d\n", id);
+            res.status = 200;
+            res.set_content("Okay", "text/plain");
+            return;
+        } catch (...) {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+            return;
+        }
+    });
+
+    // delete all breakpoint from a file
+    http_server->Delete("/breakpoint/file", [](const Request &req, Response &res) {
+        auto bps = get_breakpoint_filename(req.body, res);
+        for (auto const &bp : bps) {
+            remove_break_point(bp);
+        }
+    });
+
+    // get all the files
+    http_server->Get("/files", [](const Request &req, Response &res) {
+        if (db_) {
+            auto names = db_->get_all_files();
+            struct StrValue {
+                std::string value;
+                [[nodiscard]]
+                std::string to_json() const { return value; }
+            };
+            std::vector<StrValue> values;
+            values.reserve(names.size());
+            for (auto const &name: names) {
+                values.emplace_back(StrValue{name});
+            }
+            auto content = json11::Json(values).dump();
+            res.set_content(content, "application/json");
+            res.status = 200;
+        } else {
+            res.set_content("ERROR", "text/plain");
+            res.status = 401;
         }
     });
 
@@ -268,7 +366,6 @@ void initialize_runtime() {
     runtime_thread = std::thread([=]() { http_server->listen("0.0.0.0", runtime_port); });
 
     // by default it's locked
-    runtime_lock.lock();
     runtime_lock.lock();
 }
 

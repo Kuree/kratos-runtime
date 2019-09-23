@@ -1,4 +1,5 @@
 #include <iostream>
+#include <unistd.h>
 #include "../../src/control.hh"
 #include "../../src/std/vpi_user.h"
 
@@ -13,6 +14,10 @@ vpiHandle vpi_handle_by_name(PLI_BYTE8 *, vpiHandle) { return nullptr; }
 int main(int, char **) {
     // initialize the server
     initialize_runtime();
-    while (1);
+    while (1) {
+        usleep(1000000);
+        breakpoint_trace(0);
+        breakpoint_trace(1);
+    }
     return EXIT_SUCCESS;
 }

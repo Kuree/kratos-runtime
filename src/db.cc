@@ -24,6 +24,34 @@ std::optional<uint32_t> Database::get_breakpoint_id(const std::string& filename,
     }
 }
 
+std::vector<uint32_t> Database::get_all_breakpoints(const std::string& filename) {
+    using namespace sqlite_orm;
+    using namespace kratos;
+    std::vector<uint32_t> result;
+    try {
+        auto bps = storage_->get_all<BreakPoint>(
+            where(c(&BreakPoint::filename) == filename));
+       result.reserve(bps.size());
+       for (auto const &bp: bps) {
+           result.emplace_back(bp.id);
+       }
+    } catch (...) {
+    }
+    return result;
+}
+
+std::vector<std::string> Database::get_all_files() {
+    using namespace sqlite_orm;
+    // select distinct
+    auto names = storage_->select(distinct(&kratos::BreakPoint::filename));
+    std::vector<std::string> result;
+    result.reserve(names.size());
+    for (auto const &name: names) {
+        result.emplace_back(name);
+    }
+    return names;
+}
+
 std::map<std::string, std::pair<std::string, std::string>> Database::get_variable_mapping(
     uint32_t breakpoint_id) {
     using namespace sqlite_orm;
