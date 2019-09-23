@@ -57,6 +57,7 @@ std::string get_breakpoint_value(uint32_t id) {
 
 void breakpoint_trace(uint32_t id) {
     if (!should_continue_simulation(id)) {
+        printf("hit breakpoint %d\n", id);
         // tell the client that we have hit a clock
         if (http_client) {
             auto content = get_breakpoint_value(id);
@@ -335,7 +336,7 @@ void initialize_runtime() {
         }
         if (!has_error) {
             auto const &ip = ip_json.string_value();
-            auto port = port_json.number_value();
+            auto port = static_cast<int>(port_json.number_value());
             auto &db_filename = db_json.string_value();
 
             if (!std::filesystem::exists(db_filename)) {
@@ -345,6 +346,7 @@ void initialize_runtime() {
                     http_client = std::make_unique<Client>(ip.c_str(), port);
                     // load up the database
                     db_ = std::make_unique<Database>(db_filename);
+                    printf("Debugger connected to %d\n", port);
                 } catch (...) {
                     http_client = nullptr;
                     db_ = nullptr;
@@ -355,7 +357,6 @@ void initialize_runtime() {
         if (!has_error) {
             res.status = 200;
             res.set_content("Okay", "text/plain");
-            printf("Debugger connected\n");
         } else {
             res.status = 401;
             res.set_content("ERROR", "text/plain");
@@ -367,6 +368,7 @@ void initialize_runtime() {
 
     // by default it's locked
     runtime_lock.lock();
+    runtime_lock.lock();
 }
 
 PLI_INT32 initialize_server_vpi(s_cb_data *) {
@@ -375,6 +377,10 @@ PLI_INT32 initialize_server_vpi(s_cb_data *) {
 }
 
 void teardown_runtime() {
+    // send stop signal to the debugger
+    if (http_client) {
+        http_client->Post("/stop", "", "text/plain");
+    }
     runtime_lock.unlock();
     http_server->stop();
     // this may take some time due to system resource allocation
