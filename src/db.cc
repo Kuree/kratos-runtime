@@ -69,3 +69,18 @@ std::map<std::string, std::pair<std::string, std::string>> Database::get_variabl
         return {};
     }
 }
+
+std::optional<std::pair<std::string, uint32_t>> Database::get_breakpoint_info(uint32_t id) {
+    using namespace sqlite_orm;
+    using namespace kratos;
+    try {
+        auto bps = storage_->get_all<BreakPoint>(where(c(&BreakPoint::id) == id));
+        if (!bps.empty()) {
+            auto bp = bps[0];
+            return std::make_pair(bp.filename, bp.line_num);
+        }
+    } catch (...) {
+
+    }
+    return std::nullopt;
+}

@@ -14,6 +14,7 @@ public:
         uint32_t breakpoint_id);
     std::vector<uint32_t> get_all_breakpoints(const std::string &filename);
     std::vector<std::string> get_all_files();
+    std::optional<std::pair<std::string, uint32_t>> get_breakpoint_info(uint32_t id);
 
 private:
     using Storage = decltype(kratos::init_storage(""));

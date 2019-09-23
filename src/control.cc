@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include "db.hh"
 #include "fmt/format.h"
@@ -11,7 +12,6 @@
 #include "sim.hh"
 #include "std/vpi_user.h"
 #include "util.hh"
-#include <mutex>
 
 // constants
 constexpr uint16_t runtime_port = 8888;
@@ -26,6 +26,9 @@ std::unique_ptr<Database> db_;
 std::string top_name_ = "TOP.";  // NOLINT
 // mutex
 std::mutex runtime_lock;
+// step over. notice that this is not mutex protected. You should not set step over during
+// the simulation
+bool step_over = false;
 
 std::pair<bool, int64_t> get_value(const std::string &handle_name);
 
@@ -50,18 +53,33 @@ std::string get_breakpoint_value(uint32_t id) {
         }
     }
 
-    auto obj = json11::Json::object();
-    json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)}, {"value", vars}});
+    // send over the line number and filename as well
+    std::string filename;
+    std::string line_num;
+    if (db_) {
+        auto bp = db_->get_breakpoint_info(id);
+        if (bp) {
+            filename = bp.value().first;
+            line_num = fmt::format("{0}", bp.value().second);
+        }
+    }
+    json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)},
+                                                {"value", vars}, {"filename", filename},
+                                                {"line_num", line_num}});
     return result.dump();
 }
 
 void breakpoint_trace(uint32_t id) {
-    if (!should_continue_simulation(id)) {
+    if (step_over || !should_continue_simulation(id)) {
         printf("hit breakpoint %d\n", id);
         // tell the client that we have hit a clock
         if (http_client) {
             auto content = get_breakpoint_value(id);
-            http_client->Post("/status/breakpoint", content, "application/json");
+            if (step_over) {
+                http_client->Post("/status/step", content, "application/json");
+            } else {
+                http_client->Post("/status/breakpoint", content, "application/json");
+            }
         }
         // hold the lock
         runtime_lock.lock();
@@ -78,7 +96,7 @@ std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Respons
         auto line_num_int = line_num.int_value();
         // hacky way
         if (!db_) {
-            while(!db_) {
+            while (!db_) {
                 // sleep for 0.1 seconds
                 usleep(100000);
             }
@@ -261,12 +279,11 @@ void initialize_runtime() {
             auto names = db_->get_all_files();
             struct StrValue {
                 std::string value;
-                [[nodiscard]]
-                std::string to_json() const { return value; }
+                [[nodiscard]] std::string to_json() const { return value; }
             };
             std::vector<StrValue> values;
             values.reserve(names.size());
-            for (auto const &name: names) {
+            for (auto const &name : names) {
                 values.emplace_back(StrValue{name});
             }
             auto content = json11::Json(values).dump();
@@ -316,6 +333,14 @@ void initialize_runtime() {
     });
 
     http_server->Post("/continue", [](const Request &req, Response &res) {
+        step_over = false;
+        runtime_lock.unlock();
+        res.status = 200;
+        res.set_content("Okay", "text/plain");
+    });
+
+    http_server->Post("/step_over", [](const Request &req, Response &res) {
+        step_over = true;
         runtime_lock.unlock();
         res.status = 200;
         res.set_content("Okay", "text/plain");
