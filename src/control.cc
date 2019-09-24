@@ -30,7 +30,8 @@ std::mutex runtime_lock;
 // the simulation
 bool step_over = false;
 
-std::pair<bool, int64_t> get_value(const std::string &handle_name);
+std::optional<int64_t> get_value(const std::string &handle_name);
+std::optional<double> get_simulation_time(const std::string &);
 
 std::string get_breakpoint_value(uint32_t id) {
     std::vector<std::pair<std::string, std::string>> vars;
@@ -64,7 +65,8 @@ std::string get_breakpoint_value(uint32_t id) {
         }
     }
     json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)},
-                                                {"value", vars}, {"filename", filename},
+                                                {"value", vars},
+                                                {"filename", filename},
                                                 {"line_num", line_num}});
     return result.dump();
 }
@@ -147,18 +149,21 @@ std::vector<uint32_t> get_breakpoint_filename(const std::string &body, httplib::
     return {};
 }
 
-std::pair<bool, int64_t> get_value(const std::string &handle_name) {
+std::optional<int64_t> get_value(const std::string &handle_name) {
+    if (handle_name == "time") {
+        return get_simulation_time("");
+    }
     auto handle = const_cast<char *>(handle_name.c_str());
     vpiHandle vh = vpi_handle_by_name(handle, nullptr);
     if (!vh) {
         // not found
-        return {false, 0};
+        return std::nullopt;
     } else {
         s_vpi_value v;
         v.format = vpiIntVal;
         vpi_get_value(vh, &v);
         int64_t result = v.value.integer;
-        return {true, result};
+        return result;
     }
 }
 
@@ -173,7 +178,7 @@ std::optional<double> get_simulation_time(const std::string &module_name = "") {
         uint32_t low = current_time.low;
         return high << 32u | low;
     } else {
-        auto handle = const_cast<char*>(module_name.c_str());
+        auto handle = const_cast<char *>(module_name.c_str());
         vpiHandle module_handle = vpi_handle_by_name(handle, nullptr);
         if (module_handle) {
             uint64_t high = current_time.high;
@@ -320,9 +325,9 @@ void initialize_runtime() {
     http_server->Get(R"(/value/([\w.$]+))", [](const Request &req, Response &res) {
         auto name = req.matches[1];
         auto result = get_value(name);
-        if (result.first) {
+        if (result) {
             res.status = 200;
-            auto content = fmt::format("{0}", result.second);
+            auto content = fmt::format("{0}", result.value());
             res.set_content(content, "text/plain");
         } else {
             res.status = 401;
@@ -330,8 +335,42 @@ void initialize_runtime() {
         }
     });
 
+    http_server->Get("/values", [](const Request &req, Response &res) {
+        std::string err;
+        auto json = json11::Json::parse(req.body, err);
+        if (err.empty()) {
+            auto const &lst = json.array_items();
+            struct Entry {
+                std::string name;
+                std::string value;
+                [[nodiscard]] json11::Json to_json() const {
+                    return json11::Json::object{{{"name", name}, {"value", value}}};
+                }
+            };
+            std::vector<Entry> result;
+            for (auto const &entry : lst) {
+                auto const &name = entry.string_value();
+                auto v = get_value(name);
+                std::string value;
+                if (v) {
+                    value = fmt::format("{0}", v.value());
+
+                } else {
+                    value = "ERROR";
+                }
+                result.emplace_back(Entry{name, value});
+            }
+            res.status = 200;
+            auto content = json11::Json(result).dump();
+            res.set_content(content, "application/text");
+        } else {
+            res.status = 401;
+            res.set_content("[]", "application/json");
+        }
+    });
+
     http_server->Get("/time", [](const Request &req, Response &res) {
-        auto time = get_simulation_time();
+        auto time = get_simulation_time("");
         if (time) {
             res.status = 200;
             res.set_content(fmt::format("{0}", time.value()), "text/plain");
