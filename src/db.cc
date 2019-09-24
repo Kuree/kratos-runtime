@@ -1,5 +1,4 @@
 #include "db.hh"
-#include "kratos/src/debug.hh"
 
 Database::Database(const std::string& filename) {
     // we assume the file already exists

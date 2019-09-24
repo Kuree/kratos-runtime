@@ -30,8 +30,8 @@ std::mutex runtime_lock;
 // the simulation
 bool step_over = false;
 
-std::optional<int64_t> get_value(const std::string &handle_name);
-std::optional<double> get_simulation_time(const std::string &);
+std::optional<std::string> get_value(const std::string &handle_name);
+std::optional<std::string> get_simulation_time(const std::string &);
 
 std::string get_breakpoint_value(uint32_t id) {
     std::vector<std::pair<std::string, std::string>> vars;
@@ -50,7 +50,13 @@ std::string get_breakpoint_value(uint32_t id) {
                     format = "{0}.{1}.{2}";
                 handle_name = fmt::format(format, top_name_, handle_name, var);
             }
-            vars.emplace_back(std::make_pair(front_var, handle_name));
+            auto value = get_value(handle_name);
+            std::string v;
+            if (value)
+                v = value.value();
+            else
+                v = "ERROR";
+            vars.emplace_back(std::make_pair(front_var, v));
         }
     }
 
@@ -149,7 +155,7 @@ std::vector<uint32_t> get_breakpoint_filename(const std::string &body, httplib::
     return {};
 }
 
-std::optional<int64_t> get_value(const std::string &handle_name) {
+std::optional<std::string> get_value(const std::string &handle_name) {
     if (handle_name == "time") {
         return get_simulation_time("");
     }
@@ -163,11 +169,11 @@ std::optional<int64_t> get_value(const std::string &handle_name) {
         v.format = vpiIntVal;
         vpi_get_value(vh, &v);
         int64_t result = v.value.integer;
-        return result;
+        return fmt::format("{0}", result);
     }
 }
 
-std::optional<double> get_simulation_time(const std::string &module_name = "") {
+std::optional<std::string> get_simulation_time(const std::string &module_name = "") {
     s_vpi_time current_time;
     // verilator only supports vpiSimTime
     current_time.type = vpiSimTime;
@@ -176,14 +182,14 @@ std::optional<double> get_simulation_time(const std::string &module_name = "") {
         vpi_get_time(nullptr, &current_time);
         uint64_t high = current_time.high;
         uint32_t low = current_time.low;
-        return high << 32u | low;
+        return fmt::format("{0}", high << 32u | low);
     } else {
         auto handle = const_cast<char *>(module_name.c_str());
         vpiHandle module_handle = vpi_handle_by_name(handle, nullptr);
         if (module_handle) {
             uint64_t high = current_time.high;
             uint32_t low = current_time.low;
-            return high << 32u | low;
+            return fmt::format("{0}", high << 32u | low);
         }
     }
     return std::nullopt;
@@ -327,8 +333,7 @@ void initialize_runtime() {
         auto result = get_value(name);
         if (result) {
             res.status = 200;
-            auto content = fmt::format("{0}", result.value());
-            res.set_content(content, "text/plain");
+            res.set_content(result.value(), "text/plain");
         } else {
             res.status = 401;
             res.set_content("ERROR", "text/plain");
@@ -353,7 +358,7 @@ void initialize_runtime() {
                 auto v = get_value(name);
                 std::string value;
                 if (v) {
-                    value = fmt::format("{0}", v.value());
+                    value = v.value();
 
                 } else {
                     value = "ERROR";

@@ -12,8 +12,7 @@ set(STATIC_FLAG "-static-libgcc -static-libstdc++")
 find_package(Threads REQUIRED)
 
 # extern library
-add_subdirectory(extern/fmt)
-add_subdirectory(extern/sqlite)
+add_subdirectory(extern/kratos)
 add_subdirectory(extern/json11)
 
 add_subdirectory(src)

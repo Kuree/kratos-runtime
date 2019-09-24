@@ -11,7 +11,7 @@ initial begin
 
     for (int i = 0; i < 4; i++) begin
         in1 = i;
-        in2 = i;
+        #1; in2 = i;
         #1;
     end
 

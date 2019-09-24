@@ -2,7 +2,8 @@
 #define KRATOS_RUNTIME_DB_HH
 
 #include <memory>
-#include "kratos/src/debug.hh"
+#include <any>
+#include "kratos/src/db.hh"
 #include "sqlite_orm/sqlite_orm.h"
 
 class Database {
@@ -17,6 +18,7 @@ public:
     std::optional<std::pair<std::string, uint32_t>> get_breakpoint_info(uint32_t id);
 
 private:
+    // see https://github.com/fnc12/sqlite_orm/wiki/FAQ
     using Storage = decltype(kratos::init_storage(""));
     std::unique_ptr<Storage> storage_;
 };
