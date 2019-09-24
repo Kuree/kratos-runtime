@@ -162,6 +162,28 @@ std::pair<bool, int64_t> get_value(const std::string &handle_name) {
     }
 }
 
+std::optional<double> get_simulation_time(const std::string &module_name = "") {
+    s_vpi_time current_time;
+    // verilator only supports vpiSimTime
+    current_time.type = vpiSimTime;
+    current_time.real = 0;
+    if (module_name.empty()) {
+        vpi_get_time(nullptr, &current_time);
+        uint64_t high = current_time.high;
+        uint32_t low = current_time.low;
+        return high << 32u | low;
+    } else {
+        auto handle = const_cast<char*>(module_name.c_str());
+        vpiHandle module_handle = vpi_handle_by_name(handle, nullptr);
+        if (module_handle) {
+            uint64_t high = current_time.high;
+            uint32_t low = current_time.low;
+            return high << 32u | low;
+        }
+    }
+    return std::nullopt;
+}
+
 int monitor_signal(p_cb_data cb_data_p) {
     std::string signal_name = cb_data_p->user_data;
     std::string value = cb_data_p->value->value.str;
@@ -302,6 +324,17 @@ void initialize_runtime() {
             res.status = 200;
             auto content = fmt::format("{0}", result.second);
             res.set_content(content, "text/plain");
+        } else {
+            res.status = 401;
+            res.set_content("ERROR", "text/plain");
+        }
+    });
+
+    http_server->Get("/time", [](const Request &req, Response &res) {
+        auto time = get_simulation_time();
+        if (time) {
+            res.status = 200;
+            res.set_content(fmt::format("{0}", time.value()), "text/plain");
         } else {
             res.status = 401;
             res.set_content("ERROR", "text/plain");
@@ -449,5 +482,7 @@ void initialize_runtime_vpi() {
     vpi_free_object(res);
 }
 
+extern "C" {
 // these are system level calls. register it to the simulator
 void (*vlog_startup_routines[])() = {initialize_runtime_vpi, nullptr};
+}

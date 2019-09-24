@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 4; i++) {
         tb->in1 = i;
         tb->in2 = i;
+        main_time++;
         tb->eval();
         VerilatedVpi::callValueCbs(); // required to call callbacks
     }

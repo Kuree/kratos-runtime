@@ -9,6 +9,7 @@ void teardown_runtime();
 extern "C" {
 // this is the breakpoint insert by kratos for each statement
 void breakpoint_trace(uint32_t id);
+void initialize_runtime_vpi();
 }
 
 #endif  // KRATOS_RUNTIME_CONTROL_HH
