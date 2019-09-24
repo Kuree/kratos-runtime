@@ -16,6 +16,7 @@ public:
     std::vector<uint32_t> get_all_breakpoints(const std::string &filename);
     std::vector<std::string> get_all_files();
     std::optional<std::pair<std::string, uint32_t>> get_breakpoint_info(uint32_t id);
+    std::vector<std::string> get_port_names(uint32_t breakpoint_id);
 
 private:
     // see https://github.com/fnc12/sqlite_orm/wiki/FAQ

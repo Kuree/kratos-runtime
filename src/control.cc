@@ -30,8 +30,9 @@ std::mutex runtime_lock;
 // the simulation
 bool step_over = false;
 
-std::optional<std::string> get_value(const std::string &handle_name);
+std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
+
 
 std::string get_breakpoint_value(uint32_t id) {
     std::vector<std::pair<std::string, std::string>> vars;
@@ -41,16 +42,7 @@ std::string get_breakpoint_value(uint32_t id) {
         for (auto const &[front_var, entry] : variables) {
             auto [handle_name, var] = entry;
             // decide if we need to append the top name
-            if (handle_name.size() < top_name_.size() ||
-                handle_name.substr(top_name_.size()) != top_name_) {
-                std::string format;
-                if (top_name_.back() == '.')
-                    format = "{0}{1}.{2}";
-                else
-                    format = "{0}.{1}.{2}";
-                handle_name = fmt::format(format, top_name_, handle_name, var);
-            }
-            auto value = get_value(handle_name);
+            auto value = get_value(fmt::format("{0}.{1}", handle_name, var));
             std::string v;
             if (value)
                 v = value.value();
@@ -155,10 +147,21 @@ std::vector<uint32_t> get_breakpoint_filename(const std::string &body, httplib::
     return {};
 }
 
-std::optional<std::string> get_value(const std::string &handle_name) {
+std::optional<std::string> get_value(std::string handle_name) {
     if (handle_name == "time") {
         return get_simulation_time("");
     }
+    // change the handle name
+    if (handle_name.size() < top_name_.size() ||
+        handle_name.substr(top_name_.size()) != top_name_) {
+        std::string format;
+        if (top_name_.back() == '.')
+            format = "{0}{1}";
+        else
+            format = "{0}.{1}";
+        handle_name = fmt::format(format, top_name_, handle_name);
+    }
+
     auto handle = const_cast<char *>(handle_name.c_str());
     vpiHandle vh = vpi_handle_by_name(handle, nullptr);
     if (!vh) {
