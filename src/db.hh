@@ -10,13 +10,13 @@ class Database {
 public:
     explicit Database(const std::string &filename);
 
-    std::optional<uint32_t> get_breakpoint_id(const std::string &filename, uint32_t line_num);
-    std::map<std::string, std::pair<std::string, std::string>> get_variable_mapping(
+    std::vector<uint32_t> get_breakpoint_id(const std::string &filename, uint32_t line_num);
+    std::vector<kratos::Variable> get_variable_mapping(
         uint32_t breakpoint_id);
     std::vector<uint32_t> get_all_breakpoints(const std::string &filename);
     std::vector<std::string> get_all_files();
     std::optional<std::pair<std::string, uint32_t>> get_breakpoint_info(uint32_t id);
-    std::vector<std::string> get_port_names(uint32_t breakpoint_id);
+    std::vector<kratos::ContextVariable> get_context_variable(uint32_t id);
 
 private:
     // see https://github.com/fnc12/sqlite_orm/wiki/FAQ

@@ -35,20 +35,38 @@ std::optional<std::string> get_simulation_time(const std::string &);
 
 
 std::string get_breakpoint_value(uint32_t id) {
-    std::vector<std::pair<std::string, std::string>> vars;
-    std::map<std::string, std::pair<std::string, std::string>> variables;
+    std::vector<std::pair<std::string, std::string>> self_vars;
+    std::vector<std::pair<std::string, std::string>> gen_vars;
+    std::vector<std::pair<std::string, std::string>> local_vars;
     if (db_) {
-        variables = db_->get_variable_mapping(id);
-        for (auto const &[front_var, entry] : variables) {
-            auto [handle_name, var] = entry;
+        auto variables = db_->get_variable_mapping(id);
+        for (auto const &variable : variables) {
             // decide if we need to append the top name
-            auto value = get_value(fmt::format("{0}.{1}", handle_name, var));
+            auto value = get_value(fmt::format("{0}.{1}", variable.handle, variable.var));
             std::string v;
             if (value)
                 v = value.value();
             else
                 v = "ERROR";
-            vars.emplace_back(std::make_pair(front_var, v));
+            if (variable.front_var.empty()) {
+                gen_vars.emplace_back(std::make_pair(variable.var, v));
+            } else {
+                self_vars.emplace_back(std::make_pair(variable.front_var, v));
+            }
+        }
+        auto context_vars = db_->get_context_variable(id);
+        for (auto const &variable: context_vars) {
+            if (variable.is_var) {
+                auto value = get_value(variable.value);
+                std::string v;
+                if (value)
+                    v = value.value();
+                else
+                    v = "ERROR";
+                local_vars.emplace_back(std::make_pair(variable.name, v));
+            } else {
+                local_vars.emplace_back(std::make_pair(variable.name, variable.value));
+            }
         }
     }
 
@@ -63,7 +81,9 @@ std::string get_breakpoint_value(uint32_t id) {
         }
     }
     json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)},
-                                                {"value", vars},
+                                                {"self", self_vars},
+                                                {"local", local_vars},
+                                                {"generator", gen_vars},
                                                 {"filename", filename},
                                                 {"line_num", line_num}});
     return result.dump();
@@ -86,7 +106,7 @@ void breakpoint_trace(uint32_t id) {
     }
 }
 
-std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Response &res) {
+std::vector<uint32_t> get_breakpoint(const std::string &body, httplib::Response &res) {
     std::string error;
     auto json = json11::Json::parse(body, error);
     auto filename = json["filename"];
@@ -102,11 +122,11 @@ std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Respons
             }
         }
         if (db_) {
-            auto bp = db_->get_breakpoint_id(filename_str, line_num_int);
-            if (bp) {
+            auto bps = db_->get_breakpoint_id(filename_str, line_num_int);
+            if (!bps.empty()) {
                 res.status = 200;
-                res.set_content(fmt::format("{0}", bp.value()), "text/plain");
-                return bp;
+                res.set_content("Okay", "text/plain");
+                return bps;
             }
         }
     }
@@ -115,7 +135,7 @@ std::optional<uint32_t> get_breakpoint(const std::string &body, httplib::Respons
     }
     res.status = 401;
     res.set_content(error, "text/plain");
-    return std::nullopt;
+    return {};
 }
 
 std::vector<uint32_t> get_breakpoint_filename(const std::string &body, httplib::Response &res) {
@@ -264,19 +284,21 @@ void initialize_runtime() {
     });
 
     http_server->Post("/breakpoint", [](const Request &req, Response &res) {
-        auto bp = get_breakpoint(req.body, res);
-        if (bp) {
-            add_break_point(bp.value());
-            printf("Breakpoint inserted to %d\n", bp.value());
+        auto bps = get_breakpoint(req.body, res);
+        if (!bps.empty()) {
+            for (auto const &bp: bps) {
+                add_break_point(bp);
+                printf("Breakpoint inserted to %d\n", bp);
+            }
         }
     });
 
     http_server->Delete("/breakpoint", [](const Request &req, Response &res) {
-        auto bp = get_breakpoint(req.body, res);
-        if (db_ && bp) {
-            if (bp) {
-                remove_break_point(*bp);
-                printf("Breakpoint removed from %d\n", *bp);
+        auto bps = get_breakpoint(req.body, res);
+        if (db_ && !bps.empty()) {
+            for (auto const &bp: bps) {
+                remove_break_point(bp);
+                printf("Breakpoint removed from %d\n", bp);
                 return;
             }
         } else {
