@@ -42,17 +42,22 @@ std::string get_breakpoint_value(uint32_t id) {
         auto variables = db_->get_variable_mapping(id);
         for (auto const &variable : variables) {
             // decide if we need to append the top name
-            auto value = get_value(fmt::format("{0}.{1}", variable.handle, variable.var));
-            std::string v;
-            if (value)
-                v = value.value();
-            else
-                v = "ERROR";
-            if (variable.front_var.empty()) {
-                gen_vars.emplace_back(std::make_pair(variable.var, v));
+            if (variable.is_var) {
+                auto value = get_value(fmt::format("{0}.{1}", variable.handle, variable.var));
+                std::string v;
+                if (value)
+                    v = value.value();
+                else
+                    v = "ERROR";
+                if (variable.front_var.empty()) {
+                    gen_vars.emplace_back(std::make_pair(variable.var, v));
+                } else {
+                    self_vars.emplace_back(std::make_pair(variable.front_var, v));
+                }
             } else {
-                self_vars.emplace_back(std::make_pair(variable.front_var, v));
+                self_vars.emplace_back(variable.front_var, variable.var);
             }
+
         }
         auto context_vars = db_->get_context_variable(id);
         for (auto const &variable: context_vars) {
@@ -138,17 +143,13 @@ std::vector<uint32_t> get_breakpoint(const std::string &body, httplib::Response 
     return {};
 }
 
-std::vector<uint32_t> get_breakpoint_filename(const std::string &body, httplib::Response &res) {
-    std::string error;
-    auto json = json11::Json::parse(body, error);
-    auto filename = json["filename"];
-    if (error.empty() && !filename.is_null()) {
-        auto const &filename_str = filename.string_value();
+std::vector<uint32_t> get_breakpoint_filename(const std::string &filename, httplib::Response &res) {
+    if (!filename.empty()) {
         if (db_) {
             res.status = 200;
             // return a list of breakpoints
             res.set_content("Okay", "text/plain");
-            auto bps = db_->get_all_breakpoints(filename_str);
+            auto bps = db_->get_all_breakpoints(filename);
             struct BP {
                 uint32_t id;
                 [[nodiscard]] std::string to_json() const { return fmt::format("{0}", id); }
@@ -324,9 +325,11 @@ void initialize_runtime() {
     });
 
     // delete all breakpoint from a file
-    http_server->Delete("/breakpoint/file", [](const Request &req, Response &res) {
-        auto bps = get_breakpoint_filename(req.body, res);
+    http_server->Delete(R"(/breakpoint/file/([\w./:\\]+))", [](const Request &req, Response &res) {
+        auto filename = req.matches[1];
+        auto bps = get_breakpoint_filename(filename, res);
         for (auto const &bp : bps) {
+            printf("Breakpoint removed from %d\n", bp);
             remove_break_point(bp);
         }
     });
