@@ -19,6 +19,3 @@
 [submodule "extern/exprtk"]
 	path = extern/exprtk
 	url = https://github.com/ArashPartow/exprtk
-[submodule "extern/googletest"]
-	path = extern/googletest
-	url = https://github.com/google/googletest
