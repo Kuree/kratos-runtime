@@ -18,4 +18,6 @@ public:
     }
 };
 
+std::string get_handle_name(const std::string &top, const std::string& handle);
+
 #endif  // KRATOS_RUNTIME_UTIL_HH

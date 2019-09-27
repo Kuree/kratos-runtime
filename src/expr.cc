@@ -17,7 +17,7 @@ std::unordered_map<uint32_t, BreakPointExpression> symbol_table;
 
 void add_expr(uint32_t breakpoint_id, const std::string &expr,
               const std::unordered_set<std::string> &symbols,
-              const std::unordered_map<std::string, uint64_t> &constants) {
+              const std::unordered_map<std::string, int64_t> &constants) {
     symbol_table.emplace(breakpoint_id, BreakPointExpression{});
     auto &bp = symbol_table.at(breakpoint_id);
     for (auto const &s : symbols) {
@@ -57,4 +57,8 @@ void remove_expr(uint32_t breakpoint_id) {
     if (symbol_table.find(breakpoint_id) != symbol_table.end()) {
         symbol_table.erase(breakpoint_id);
     }
+}
+
+bool has_expr_breakpoint(uint32_t breakpoint_id) {
+    return symbol_table.find(breakpoint_id) != symbol_table.end();
 }
