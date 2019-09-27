@@ -16,7 +16,8 @@ struct BreakPointExpression {
 std::unordered_map<uint32_t, BreakPointExpression> symbol_table;
 
 void add_expr(uint32_t breakpoint_id, const std::string &expr,
-              const std::unordered_set<std::string> &symbols) {
+              const std::unordered_set<std::string> &symbols,
+              const std::unordered_map<std::string, uint64_t> &constants) {
     symbol_table.emplace(breakpoint_id, BreakPointExpression{});
     auto &bp = symbol_table.at(breakpoint_id);
     for (auto const &s : symbols) {
@@ -25,12 +26,18 @@ void add_expr(uint32_t breakpoint_id, const std::string &expr,
         auto &x = bp.var_mapping.at(s);
         bp.table.add_variable(s, x);
     }
+    for (auto const &[s, v]: constants) {
+        bp.table.add_constant(s, v);
+    }
 
     // compile the expression
     auto &expr_t = bp.expr;
     expr_t.register_symbol_table(bp.table);
     Parser parser;
-    parser.compile(expr, expr_t);
+    auto result = parser.compile(expr, expr_t);
+    if (!result) {
+        throw std::runtime_error("Invalid expression");
+    }
 }
 
 bool evaluate(uint32_t breakpoint_id, const std::unordered_map<std::string, int64_t> &values) {

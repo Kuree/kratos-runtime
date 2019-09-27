@@ -33,7 +33,6 @@ bool step_over = false;
 std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
 
-
 std::string get_breakpoint_value(uint32_t id) {
     std::vector<std::pair<std::string, std::string>> self_vars;
     std::vector<std::pair<std::string, std::string>> gen_vars;
@@ -57,10 +56,9 @@ std::string get_breakpoint_value(uint32_t id) {
             } else {
                 self_vars.emplace_back(variable.front_var, variable.var);
             }
-
         }
         auto context_vars = db_->get_context_variable(id);
-        for (auto const &variable: context_vars) {
+        for (auto const &variable : context_vars) {
             if (variable.is_var) {
                 auto value = get_value(variable.value);
                 std::string v;
@@ -111,11 +109,13 @@ void breakpoint_trace(uint32_t id) {
     }
 }
 
-std::vector<uint32_t> get_breakpoint(const std::string &body, httplib::Response &res) {
+std::vector<std::pair<uint32_t, std::string>> get_breakpoint(const std::string &body,
+                                                             httplib::Response &res) {
     std::string error;
     auto json = json11::Json::parse(body, error);
     auto filename = json["filename"];
     auto line_num = json["line_num"];
+    auto expression = json["expression"];
     if (error.empty() && !filename.is_null() && !line_num.is_null()) {
         auto const &filename_str = filename.string_value();
         auto line_num_int = line_num.int_value();
@@ -131,7 +131,14 @@ std::vector<uint32_t> get_breakpoint(const std::string &body, httplib::Response 
             if (!bps.empty()) {
                 res.status = 200;
                 res.set_content("Okay", "text/plain");
-                return bps;
+                std::vector<std::pair<uint32_t, std::string>> result;
+                result.reserve(bps.size());
+                std::string expr_str;
+                if (!expression.is_null()) expr_str = expression.string_value();
+                for (auto const &bp : bps) {
+                    result.emplace_back(std::make_pair(bp, expr_str));
+                }
+                return result;
             }
         }
     }
@@ -264,22 +271,6 @@ void initialize_runtime() {
     http_server = std::make_unique<Server>();
 
     // setup call backs
-    http_server->Post(R"(/breakpoint/(\d+))", [](const Request &req, Response &res) {
-        auto num = req.matches[1];
-        try {
-            auto id = std::stoi(num);
-            add_break_point(id);
-            printf("Breakpoint inserted to %d\n", id);
-            res.status = 200;
-            res.set_content("Okay", "text/plain");
-            return;
-        } catch (...) {
-            res.status = 401;
-            res.set_content("ERROR", "text/plain");
-            return;
-        }
-    });
-
     http_server->Get("/breakpoint", [](const Request &req, Response &res) {
         auto bp = get_breakpoint(req.body, res);
     });
@@ -287,9 +278,9 @@ void initialize_runtime() {
     http_server->Post("/breakpoint", [](const Request &req, Response &res) {
         auto bps = get_breakpoint(req.body, res);
         if (!bps.empty()) {
-            for (auto const &bp: bps) {
-                add_break_point(bp);
-                printf("Breakpoint inserted to %d\n", bp);
+            for (auto const &bp : bps) {
+                add_break_point(bp.first);
+                printf("Breakpoint inserted to %d\n", bp.first);
             }
         }
     });
@@ -297,9 +288,9 @@ void initialize_runtime() {
     http_server->Delete("/breakpoint", [](const Request &req, Response &res) {
         auto bps = get_breakpoint(req.body, res);
         if (db_ && !bps.empty()) {
-            for (auto const &bp: bps) {
-                remove_break_point(bp);
-                printf("Breakpoint removed from %d\n", bp);
+            for (auto const &bp : bps) {
+                remove_break_point(bp.first);
+                printf("Breakpoint removed from %d\n", bp.first);
                 return;
             }
         } else {

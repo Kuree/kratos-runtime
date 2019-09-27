@@ -27,3 +27,12 @@ TEST(expr_eval, remove) {   // NOLINT
     remove_expr(0);
     EXPECT_FALSE(evaluate(0, {{"a", 3}}));
 }
+
+TEST(expr_eval, except) {   // NOLINT
+    EXPECT_THROW(add_expr(0, "a > 2", {}), std::runtime_error);
+}
+
+TEST(expr_eval, self) { // NOLINT
+    EXPECT_NO_THROW(add_expr(0, "self._a > 2", {"self._a"}));
+    EXPECT_FALSE(evaluate(0, {{"self._a", 1}}));
+}
