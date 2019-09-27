@@ -16,3 +16,9 @@
 [submodule "extern/json11"]
 	path = extern/json11
 	url = https://github.com/dropbox/json11
+[submodule "extern/exprtk"]
+	path = extern/exprtk
+	url = https://github.com/ArashPartow/exprtk
+[submodule "extern/googletest"]
+	path = extern/googletest
+	url = https://github.com/google/googletest

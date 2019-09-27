@@ -8,6 +8,13 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # statically link glibc
 set(STATIC_FLAG "-static-libgcc -static-libstdc++")
 
+# default to release
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING
+            "Choose the type of build, options are: Debug Release"
+            FORCE)
+endif (NOT CMAKE_BUILD_TYPE)
+
 # thread is requires
 find_package(Threads REQUIRED)
 
@@ -17,4 +24,6 @@ add_subdirectory(extern/json11)
 
 add_subdirectory(src)
 
-add_subdirectory(tests/postman)
+include(GoogleTest)
+enable_testing()
+add_subdirectory(tests)
