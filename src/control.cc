@@ -25,6 +25,8 @@ std::unordered_map<std::string, vpiHandle> signal_call_back;
 std::unique_ptr<Database> db_;
 std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>>
     breakpoint_symbol_mapping;
+// this is for vpi optimization
+std::unordered_map<std::string, vpiHandle> vpi_handle_map;
 // include the dot to make things easier
 std::string top_name_ = "TOP.";  // NOLINT
 // mutex
@@ -269,9 +271,15 @@ std::optional<std::string> get_value(std::string handle_name) {
         return get_simulation_time("");
     }
     handle_name = get_handle_name(top_name_, handle_name);
+    vpiHandle vh;
+    if (vpi_handle_map.find(handle_name) != vpi_handle_map.end()) {
+        vh = vpi_handle_map.at(handle_name);
+    } else {
+        auto handle = const_cast<char *>(handle_name.c_str());
+        vh = vpi_handle_by_name(handle, nullptr);
+        vpi_handle_map.emplace(handle_name, vh);
+    }
 
-    auto handle = const_cast<char *>(handle_name.c_str());
-    vpiHandle vh = vpi_handle_by_name(handle, nullptr);
     if (!vh) {
         // not found
         return std::nullopt;
