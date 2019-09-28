@@ -1,7 +1,6 @@
 #include "util.hh"
 #include "fmt/format.h"
 
-
 std::vector<std::string> get_tokens(const std::string &line, const std::string &delimiter) {
     std::vector<std::string> tokens;
     size_t prev = 0, pos = 0;
@@ -22,10 +21,9 @@ std::vector<std::string> get_tokens(const std::string &line, const std::string &
     return result;
 }
 
-std::string get_handle_name(const std::string &top, const std::string& handle_name) {
+std::string get_handle_name(const std::string &top, const std::string &handle_name) {
     // change the handle name
-    if (handle_name.size() < top.size() ||
-        handle_name.substr(top.size()) != top) {
+    if (handle_name.find(top) == std::string::npos) {
         std::string format;
         if (top.back() == '.')
             format = "{0}{1}";
@@ -34,4 +32,22 @@ std::string get_handle_name(const std::string &top, const std::string& handle_na
         return fmt::format(format, top, handle_name);
     }
     return handle_name;
+}
+
+bool is_expr_symbol(const std::string &expr, const std::string::size_type &pos, const size_t &len) {
+    // FIXME: this is a hack
+    if (pos == std::string::npos) return false;
+    static auto is_w = [](const char c) {
+        return ((c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) ||
+                (c == 0x5F));
+    };
+    if (pos > 0) {
+        char cc = expr[pos];
+        if (is_w(cc)) return false;
+    }
+    if (pos + len < expr.size() - 1) {
+        char cc = expr[pos + len];
+        if (is_w(cc)) return false;
+    }
+    return true;
 }

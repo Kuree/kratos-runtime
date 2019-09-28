@@ -6,13 +6,13 @@
 #include <mutex>
 #include <unordered_map>
 #include "db.hh"
+#include "expr.hh"
 #include "fmt/format.h"
 #include "httplib.h"
 #include "json11/json11.hpp"
 #include "sim.hh"
 #include "std/vpi_user.h"
 #include "util.hh"
-#include "expr.hh"
 
 // constants
 constexpr uint16_t runtime_port = 8888;
@@ -23,7 +23,8 @@ std::thread runtime_thread;
 std::unordered_map<vpiHandle, std::string> monitored_signal_names;
 std::unordered_map<std::string, vpiHandle> signal_call_back;
 std::unique_ptr<Database> db_;
-std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>> breakpoint_symbol_mapping;
+std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>>
+    breakpoint_symbol_mapping;
 // include the dot to make things easier
 std::string top_name_ = "TOP.";  // NOLINT
 // mutex
@@ -101,8 +102,7 @@ void breakpoint_trace(uint32_t id) {
         // if we have a conditional breakpoint
         // we need to check that
         if (has_expr_breakpoint(id)) {
-            if (!evaluate_breakpoint_expr(id))
-                return;
+            if (!evaluate_breakpoint_expr(id)) return;
         }
         // tell the client that we have hit a clock
         if (http_client) {
@@ -124,7 +124,7 @@ std::vector<std::pair<uint32_t, std::string>> get_breakpoint(const std::string &
     auto json = json11::Json::parse(body, error);
     auto filename = json["filename"];
     auto line_num = json["line_num"];
-    auto expression = json["expression"];
+    auto expression = json["expr"];
     if (error.empty() && !filename.is_null() && !line_num.is_null()) {
         auto const &filename_str = filename.string_value();
         auto line_num_int = line_num.int_value();
@@ -160,24 +160,27 @@ std::vector<std::pair<uint32_t, std::string>> get_breakpoint(const std::string &
 }
 
 bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
-    if (expr.empty())
-        return true;
-    if (!db_)
-        return false;
+    if (expr.empty()) return true;
+    if (!db_) return false;
     // query the local port variables
     auto const self_variables = db_->get_variable_mapping(breakpoint_id);
     auto const context_variables = db_->get_context_variable(breakpoint_id);
     std::unordered_map<std::string, int64_t> constants;
     std::unordered_set<std::string> symbols;
+    // initialize the mapping
+    breakpoint_symbol_mapping[breakpoint_id] = {};
     // this is self variables
-    for (auto const &v: self_variables) {
+    for (auto const &v : self_variables) {
         auto front_var = v.front_var;
+        // if front var is empty, it means it's generator variables
+        if (front_var.empty()) continue;
         // hacky way to detect if the front var exists in the expression
         front_var = fmt::format("{0}.{1}", "self", front_var);
-        if (expr.find(front_var) != std::string::npos) {
+        auto pos = expr.find(front_var);
+        if (is_expr_symbol(expr, pos, front_var.size())) {
             if (v.is_var) {
                 // compute handle name
-                auto handle_name = v.handle;
+                auto handle_name = fmt::format("{0}.{1}", v.handle, v.var);
                 handle_name = get_handle_name(top_name_, handle_name);
                 breakpoint_symbol_mapping[breakpoint_id].emplace(front_var, handle_name);
                 symbols.emplace(front_var);
@@ -185,24 +188,27 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
                 try {
                     auto value = std::stoi(v.var);
                     constants.emplace(front_var, value);
-                } catch(...) {
+                } catch (...) {
                     return false;
                 }
             }
         }
     }
     // need to compute local variables
-    for (auto const &v: context_variables) {
-        if (v.is_var) {
-            auto handle_name = get_handle_name(top_name_, v.value);
-            breakpoint_symbol_mapping[breakpoint_id].emplace(v.name, handle_name);
-            symbols.emplace(v.name);
-        } else {
-            try {
-                auto value = std::stoi(v.value);
-                constants.emplace(v.name, value);
-            } catch (...) {
-                return false;
+    for (auto const &v : context_variables) {
+        auto pos = expr.find(v.name);
+        if (is_expr_symbol(expr, pos, v.name.size())) {
+            if (v.is_var) {
+                auto handle_name = get_handle_name(top_name_, v.value);
+                breakpoint_symbol_mapping[breakpoint_id].emplace(v.name, handle_name);
+                symbols.emplace(v.name);
+            } else {
+                try {
+                    auto value = std::stoi(v.value);
+                    constants.emplace(v.name, value);
+                } catch (...) {
+                    return false;
+                }
             }
         }
     }
@@ -220,7 +226,7 @@ bool evaluate_breakpoint_expr(uint32_t breakpoint_id) {
     // we assume we already check if the system contains the breakpoint
     auto symbols = breakpoint_symbol_mapping.at(breakpoint_id);
     std::unordered_map<std::string, int64_t> values;
-    for (auto const &[var, handle_name]: symbols) {
+    for (auto const &[var, handle_name] : symbols) {
         auto v_str = get_value(handle_name);
         if (!v_str) {
             // unable to obtain the value
