@@ -169,6 +169,10 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     auto const context_variables = db_->get_context_variable(breakpoint_id);
     std::unordered_map<std::string, int64_t> constants;
     std::unordered_set<std::string> symbols;
+    // need to extract the time
+    const static std::string time_var_name = "time";
+    bool has_time_var_name_as_context = false;
+
     // initialize the mapping
     breakpoint_symbol_mapping[breakpoint_id] = {};
     // this is self variables
@@ -198,6 +202,7 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     // need to compute local variables
     for (auto const &v : context_variables) {
         if (is_expr_symbol(expr, v.name)) {
+            if (v.name == time_var_name) has_time_var_name_as_context = true;
             if (v.is_var) {
                 auto handle_name = get_handle_name(top_name_, v.value);
                 breakpoint_symbol_mapping[breakpoint_id].emplace(v.name, handle_name);
@@ -212,6 +217,15 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
             }
         }
     }
+    // special treatment for time
+    const static std::string time_handle = "$time";
+    const static std::string time_alias = "time_";
+    const auto time = has_time_var_name_as_context? time_alias : time_var_name;
+    if (is_expr_symbol(expr, time)) {
+        breakpoint_symbol_mapping[breakpoint_id].emplace(time, time_handle);
+        symbols.emplace(time);
+    }
+
     // add expression to the table
     try {
         add_expr(breakpoint_id, expr, symbols, constants);
@@ -265,7 +279,7 @@ std::vector<uint32_t> get_breakpoint_filename(const std::string &filename, httpl
 }
 
 std::optional<std::string> get_value(std::string handle_name) {
-    if (handle_name == "time") {
+    if (handle_name == "time" || handle_name == "$time") {
         return get_simulation_time("");
     }
     handle_name = get_handle_name(top_name_, handle_name);
@@ -557,7 +571,7 @@ void initialize_runtime() {
                     http_client = std::make_unique<Client>(ip.c_str(), port);
                     // load up the database
                     db_ = std::make_unique<Database>(db_filename);
-                    printf("Debugger connected to %d\n", port);
+                    printf("Debugger connected to %s:%d\n", ip.c_str(), port);
                 } catch (...) {
                     http_client = nullptr;
                     db_ = nullptr;

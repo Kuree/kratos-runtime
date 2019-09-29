@@ -36,3 +36,7 @@ TEST(expr_eval, self) { // NOLINT
     EXPECT_NO_THROW(add_expr(0, "self._a > 2", {"self._a"}));
     EXPECT_FALSE(evaluate(0, {{"self._a", 1}}));
 }
+
+TEST(expr_eval, time) { // NOLINT
+    EXPECT_NO_THROW(add_expr(0, "time_", {"time_"}));
+}
