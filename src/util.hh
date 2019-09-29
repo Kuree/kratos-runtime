@@ -21,6 +21,6 @@ public:
 
 std::string get_handle_name(const std::string &top, const std::string &handle);
 
-bool is_expr_symbol(const std::string &expr, const std::string::size_type &pos, const size_t &len);
+bool is_expr_symbol(const std::string &expr, const std::string &symbol);
 
 #endif  // KRATOS_RUNTIME_UTIL_HH

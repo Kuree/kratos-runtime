@@ -178,8 +178,7 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
         if (front_var.empty()) continue;
         // hacky way to detect if the front var exists in the expression
         front_var = fmt::format("{0}.{1}", "self", front_var);
-        auto pos = expr.find(front_var);
-        if (is_expr_symbol(expr, pos, front_var.size())) {
+        if (is_expr_symbol(expr, front_var)) {
             if (v.is_var) {
                 // compute handle name
                 auto handle_name = fmt::format("{0}.{1}", v.handle, v.var);
@@ -198,8 +197,7 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     }
     // need to compute local variables
     for (auto const &v : context_variables) {
-        auto pos = expr.find(v.name);
-        if (is_expr_symbol(expr, pos, v.name.size())) {
+        if (is_expr_symbol(expr, v.name)) {
             if (v.is_var) {
                 auto handle_name = get_handle_name(top_name_, v.value);
                 breakpoint_symbol_mapping[breakpoint_id].emplace(v.name, handle_name);

@@ -34,8 +34,9 @@ std::string get_handle_name(const std::string &top, const std::string &handle_na
     return handle_name;
 }
 
-bool is_expr_symbol(const std::string &expr, const std::string::size_type &pos, const size_t &len) {
+bool is_expr_symbol(const std::string &expr, const std::string &symbol) {
     // FIXME: this is a hack
+    auto pos = expr.find(symbol);
     if (pos == std::string::npos) return false;
     static auto is_w = [](const char c) {
         return ((c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) ||
@@ -45,8 +46,8 @@ bool is_expr_symbol(const std::string &expr, const std::string::size_type &pos, 
         char cc = expr[pos];
         if (is_w(cc)) return false;
     }
-    if (pos + len < expr.size() - 1) {
-        char cc = expr[pos + len];
+    if (pos + symbol.size() < expr.size()) {
+        char cc = expr[pos + symbol.size()];
         if (is_w(cc)) return false;
     }
     return true;
