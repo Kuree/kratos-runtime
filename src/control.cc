@@ -220,7 +220,7 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     // special treatment for time
     const static std::string time_handle = "$time";
     const static std::string time_alias = "time_";
-    const auto time = has_time_var_name_as_context? time_alias : time_var_name;
+    const auto time = has_time_var_name_as_context ? time_alias : time_var_name;
     if (is_expr_symbol(expr, time)) {
         breakpoint_symbol_mapping[breakpoint_id].emplace(time, time_handle);
         symbols.emplace(time);
@@ -587,6 +587,18 @@ void initialize_runtime() {
             res.set_content("ERROR", "text/plain");
         }
     });
+
+    // stop
+    http_server->Post("/stop", [](const Request &req, Response &res) {
+        printf("stop\n");
+        // stop the simulation
+        vpi_control(vpiFinish, 1);
+        // unlock it if it's locked
+        runtime_lock.unlock();
+        res.status = 200;
+        res.set_content("Okay", "text/plain");
+    });
+
 
     // start the http in a different thread
     runtime_thread = std::thread([=]() { http_server->listen("0.0.0.0", runtime_port); });

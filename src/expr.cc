@@ -46,7 +46,6 @@ bool evaluate(uint32_t breakpoint_id, const std::unordered_map<std::string, int6
     // set values
     auto &bp = symbol_table.at(breakpoint_id);
     for (auto const &[s, v]: values) {
-        printf("%s: %ld\n", s.c_str(), v);
         bp.var_mapping.at(s) = v;
     }
     SymbolType raw_result = bp.expr.value();

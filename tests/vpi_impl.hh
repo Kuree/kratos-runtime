@@ -10,5 +10,6 @@ PLI_INT32 vpi_free_object(vpiHandle) { return 0; }
 uint32_t v = 0;
 vpiHandle vpi_handle_by_name(PLI_BYTE8 *, vpiHandle) { return &v; }
 void vpi_get_time(vpiHandle, p_vpi_time t) { t->real = 0;}
+PLI_INT32 vpi_control(PLI_INT32, ...) { return 0; }
 
 #endif  // KRATOS_RUNTIME_VPI_IMPL_HH
