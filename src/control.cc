@@ -546,6 +546,57 @@ void initialize_runtime() {
         res.set_content("Okay", "text/plain");
     });
 
+    http_server->Get(R"(/hierarchy/([\w.$]+))", [](const Request &req, Response &res) {
+        std::string name = req.matches[1];
+        if (db_) {
+            if (name == "$") name = "";
+            auto result = db_->get_hierarchy(name);
+            std::vector<std::string> names;
+            names.reserve(result.size());
+            for (auto const &h : result) {
+                names.emplace_back(fmt::format("{0}.{1}", h.parent_handle, h.child));
+            }
+            auto content = json11::Json(names).dump();
+            res.status = 200;
+            res.set_content(content, "application/json");
+        } else {
+            res.status = 403;
+            res.set_content("[]", "application/json");
+        }
+    });
+
+    http_server->Get(R"(/connection/([\w.$]+))", [](const Request &req, Response &res) {
+        auto const handle_name = req.matches[1];
+        if (db_) {
+            auto result = db_->get_connection(handle_name);
+            struct ConnectionWrapper {
+                std::string handle_from;
+                std::string var_from;
+                std::string handle_to;
+                std::string var_to;
+
+                [[nodiscard]] json11::Json to_json() const {
+                    return json11::Json::object{{{"handle_from", handle_from},
+                                                 {"var_from", var_from},
+                                                 {"handle_to", handle_to},
+                                                 {"var_to", var_to}}};
+                }
+            };
+            std::vector<ConnectionWrapper> r;
+            r.reserve(result.size());
+            for (auto const &entry : result) {
+                r.emplace_back(ConnectionWrapper{entry.handle_from, entry.var_from, entry.handle_to,
+                                                 entry.var_to});
+            }
+            auto content = json11::Json(r).dump();
+            res.status = 200;
+            res.set_content(content, "application/json");
+        } else {
+            res.status = 403;
+            res.set_content("[]", "application/json");
+        }
+    });
+
     http_server->Post("/connect", [](const Request &req, Response &res) {
         // parse the content
         auto const &body = req.body;
@@ -598,7 +649,6 @@ void initialize_runtime() {
         res.status = 200;
         res.set_content("Okay", "text/plain");
     });
-
 
     // start the http in a different thread
     runtime_thread = std::thread([=]() { http_server->listen("0.0.0.0", runtime_port); });

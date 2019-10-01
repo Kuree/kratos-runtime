@@ -17,6 +17,8 @@ public:
     std::vector<std::string> get_all_files();
     std::optional<std::pair<std::string, uint32_t>> get_breakpoint_info(uint32_t id);
     std::vector<kratos::ContextVariable> get_context_variable(uint32_t id);
+    std::vector<kratos::Hierarchy> get_hierarchy(std::string handle_name);
+    std::vector<kratos::Connection> get_connection(const std::string &handle_name);
 
 private:
     // see https://github.com/fnc12/sqlite_orm/wiki/FAQ
