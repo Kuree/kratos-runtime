@@ -366,6 +366,32 @@ bool remove_monitor(const std::string &signal_name) {
     return vpi_remove_cb(cb_vh) == 1;
 }
 
+std::string get_connection_str(const std::string &handle_name, bool is_from) {
+    auto result =
+        is_from ? db_->get_connection_from(handle_name) : db_->get_connection_to(handle_name);
+    struct ConnectionWrapper {
+        std::string handle_from;
+        std::string var_from;
+        std::string handle_to;
+        std::string var_to;
+
+        [[nodiscard]] json11::Json to_json() const {
+            return json11::Json::object{{{"handle_from", handle_from},
+                                         {"var_from", var_from},
+                                         {"handle_to", handle_to},
+                                         {"var_to", var_to}}};
+        }
+    };
+    std::vector<ConnectionWrapper> r;
+    r.reserve(result.size());
+    for (auto const &entry : result) {
+        r.emplace_back(
+            ConnectionWrapper{entry.handle_from, entry.var_from, entry.handle_to, entry.var_to});
+    }
+    auto content = json11::Json(r).dump();
+    return content;
+}
+
 void initialize_runtime() {
     using namespace httplib;
     http_server = std::make_unique<Server>();
@@ -565,30 +591,22 @@ void initialize_runtime() {
         }
     });
 
-    http_server->Get(R"(/connection/([\w.$]+))", [](const Request &req, Response &res) {
+    http_server->Get(R"(/connection/to/([\w.$]+))", [](const Request &req, Response &res) {
         auto const handle_name = req.matches[1];
         if (db_) {
-            auto result = db_->get_connection(handle_name);
-            struct ConnectionWrapper {
-                std::string handle_from;
-                std::string var_from;
-                std::string handle_to;
-                std::string var_to;
+            auto content = get_connection_str(handle_name, false);
+            res.status = 200;
+            res.set_content(content, "application/json");
+        } else {
+            res.status = 403;
+            res.set_content("[]", "application/json");
+        }
+    });
 
-                [[nodiscard]] json11::Json to_json() const {
-                    return json11::Json::object{{{"handle_from", handle_from},
-                                                 {"var_from", var_from},
-                                                 {"handle_to", handle_to},
-                                                 {"var_to", var_to}}};
-                }
-            };
-            std::vector<ConnectionWrapper> r;
-            r.reserve(result.size());
-            for (auto const &entry : result) {
-                r.emplace_back(ConnectionWrapper{entry.handle_from, entry.var_from, entry.handle_to,
-                                                 entry.var_to});
-            }
-            auto content = json11::Json(r).dump();
+    http_server->Get(R"(/connection/from/([\w.$]+))", [](const Request &req, Response &res) {
+        auto const handle_name = req.matches[1];
+        if (db_) {
+            auto content = get_connection_str(handle_name, true);
             res.status = 200;
             res.set_content(content, "application/json");
         } else {

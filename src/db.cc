@@ -123,7 +123,19 @@ std::vector<kratos::Hierarchy> Database::get_hierarchy(std::string handle_name) 
     }
 }
 
-std::vector<kratos::Connection> Database::get_connection(const std::string& handle_name) {
+std::vector<kratos::Connection> Database::get_connection_to(const std::string& handle_name) {
+    using namespace sqlite_orm;
+    using namespace kratos;
+    try {
+        auto result =
+            storage_->get_all<Connection>(where(c(&Connection::handle_to) == handle_name));
+        return result;
+    } catch (...) {
+        return {};
+    }
+}
+
+std::vector<kratos::Connection> Database::get_connection_from(const std::string& handle_name) {
     using namespace sqlite_orm;
     using namespace kratos;
     try {
