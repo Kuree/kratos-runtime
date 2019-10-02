@@ -16,12 +16,11 @@
 
 // constants
 constexpr uint16_t runtime_port = 8888;
+constexpr int BUFFER_SIZE = 1024;
 
 std::unique_ptr<httplib::Server> http_server = nullptr;
 std::unique_ptr<httplib::Client> http_client = nullptr;
 std::thread runtime_thread;
-std::unordered_map<vpiHandle, std::string> monitored_signal_names;
-std::unordered_map<std::string, vpiHandle> signal_call_back;
 std::unique_ptr<Database> db_;
 std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>>
     breakpoint_symbol_mapping;
@@ -31,6 +30,7 @@ std::unordered_map<std::string, vpiHandle> vpi_handle_map;
 std::string top_name_ = "TOP.";  // NOLINT
 // mutex
 std::mutex runtime_lock;
+std::mutex vpi_lock;
 // step over. notice that this is not mutex protected. You should not set step over during
 // the simulation
 bool step_over = false;
@@ -38,6 +38,17 @@ bool step_over = false;
 std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
 bool evaluate_breakpoint_expr(uint32_t breakpoint_id);
+
+struct CbHandle {
+    s_vpi_time time;
+    s_vpi_value value;
+    s_cb_data cb_data;
+    vpiHandle cb_handle = nullptr;
+    char *name = nullptr;
+};
+
+// this is for vpi cb struct
+std::unordered_map<std::string, CbHandle *> cb_handle_map;
 
 std::string get_breakpoint_value(uint32_t id) {
     std::vector<std::pair<std::string, std::string>> self_vars;
@@ -328,42 +339,69 @@ std::optional<std::string> get_simulation_time(const std::string &module_name = 
 
 int monitor_signal(p_cb_data cb_data_p) {
     std::string signal_name = cb_data_p->user_data;
-    std::string value = cb_data_p->value->value.str;
+    std::string value = fmt::format("{0}", cb_data_p->value->value.integer);
     if (http_client) {
-        http_client->Post(fmt::format("/value/{0}", signal_name).c_str(), value, "text/plain");
+        printf("sending value %s\n", signal_name.c_str());
+        auto json = json11::Json(json11::Json::object{{"handle", signal_name}, {"value", value}});
+        http_client->Post("/value", json.dump(), "application/json");
     }
     return 0;
 }
 
-bool setup_monitor(const std::string &signal_name) {
+bool setup_monitor(std::string signal_name) {
+    vpi_lock.lock();
+    signal_name = get_handle_name(top_name_, signal_name);
     // get the handle
-    auto handle = const_cast<char *>(signal_name.c_str());
-    vpiHandle vh = vpi_handle_by_name(handle, nullptr);
+    vpiHandle vh;
+    if (vpi_handle_map.find(signal_name) != vpi_handle_map.end()) {
+        vh = vpi_handle_map.at(signal_name);
+    } else {
+        auto handle = const_cast<char *>(signal_name.c_str());
+        vh = vpi_handle_by_name(handle, nullptr);
+    }
     if (!vh) {
         // not found
         return false;
     } else {
-        if (signal_call_back.find(signal_name) != signal_call_back.end()) return true;
-        s_vpi_time time_s = {vpiSimTime};
-        s_vpi_value value_s = {vpiIntVal};
+        if (cb_handle_map.find(signal_name) != cb_handle_map.end()) return true;
+        auto cb_handle = new CbHandle();
+        cb_handle_map.emplace(signal_name, cb_handle);
+        cb_handle->time = {vpiSimTime};
+        cb_handle->value = {vpiIntVal};
 
-        s_cb_data cb_data_s = {cbValueChange, monitor_signal, nullptr, &time_s, &value_s};
-        cb_data_s.obj = vh;
-        // use the global allocated string to avoid memory leak
-        monitored_signal_names[vh] = signal_name;
-        auto &str_p = monitored_signal_names.at(vh);
-        auto char_p = const_cast<char *>(str_p.c_str());
-        cb_data_s.user_data = char_p;
-        auto r = vpi_register_cb(&cb_data_s);
-        signal_call_back.emplace(signal_name, r);
+        cb_handle->cb_data = {cbValueChange, monitor_signal, nullptr, &(cb_handle->time),
+                              &(cb_handle->value)};
+        cb_handle->cb_data.cb_rtn = monitor_signal;
+        cb_handle->cb_data.obj = vh;
+        cb_handle->name = (char *)calloc(0, signal_name.size() + 1);
+        strncpy(cb_handle->name, signal_name.c_str(), signal_name.size());
+        cb_handle->cb_data.user_data = cb_handle->name;
+
+        auto r = vpi_register_cb(&cb_handle->cb_data);
+        vpi_lock.unlock();
+
+        cb_handle->cb_handle = r;
+
+        printf("monitor added to %s\n", signal_name.c_str());
+
         return true;
     }
 }
 
-bool remove_monitor(const std::string &signal_name) {
-    if (signal_call_back.find(signal_name) == signal_call_back.end()) return false;
-    auto cb_vh = signal_call_back.at(signal_name);
-    return vpi_remove_cb(cb_vh) == 1;
+bool remove_monitor(std::string signal_name) {
+    vpi_lock.lock();
+    signal_name = get_handle_name(top_name_, signal_name);
+    if (cb_handle_map.find(signal_name) == cb_handle_map.end()) return false;
+    auto cb = cb_handle_map.at(signal_name);
+    printf("monitor removed from %s\n", signal_name.c_str());
+
+    auto r = vpi_remove_cb(cb->cb_handle);
+    vpi_lock.unlock();
+
+    delete cb->name;
+    delete cb;
+
+    return r == 1;
 }
 
 std::string get_connection_str(const std::string &handle_name, bool is_from) {
