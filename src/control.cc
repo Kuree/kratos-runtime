@@ -34,6 +34,8 @@ std::mutex vpi_lock;
 // step over. notice that this is not mutex protected. You should not set step over during
 // the simulation
 bool step_over = false;
+// whether to pause at the the clock edge
+bool pause_clock_edge = false;
 
 std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
@@ -127,6 +129,20 @@ void breakpoint_trace(uint32_t id) {
             }
         }
         // hold the lock
+        runtime_lock.lock();
+    }
+}
+
+void breakpoint_clock(void) {
+    if (pause_clock_edge) {
+        if (http_client) {
+            auto time_val = get_simulation_time("");
+            std::string time = "ERROR";
+            if (time_val) time = *time_val;
+            http_client->Post("/status/clock",
+                              fmt::format("{{\"time\": \"{0}\"}}", time),  // NOLINT
+                              "application/json");
+        }
         runtime_lock.lock();
     }
 }
@@ -398,7 +414,7 @@ bool remove_monitor(std::string signal_name) {
     auto r = vpi_remove_cb(cb->cb_handle);
     vpi_lock.unlock();
 
-    delete cb->name;
+    free(cb->name);
     delete cb;
 
     return r == 1;
@@ -606,6 +622,14 @@ void initialize_runtime() {
     http_server->Post("/step_over", [](const Request &req, Response &res) {
         step_over = true;
         runtime_lock.unlock();
+        res.status = 200;
+        res.set_content("Okay", "text/plain");
+    });
+
+    http_server->Post(R"(/clock/(\w+))", [](const Request &req, Response &res) {
+        auto value = req.matches[1];
+        // set the bool to be true
+        pause_clock_edge = value == "on";
         res.status = 200;
         res.set_content("Okay", "text/plain");
     });

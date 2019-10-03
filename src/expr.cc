@@ -50,7 +50,6 @@ bool evaluate(uint32_t breakpoint_id, const std::unordered_map<std::string, int6
     }
     SymbolType raw_result = bp.expr.value();
     int v = static_cast<int>(raw_result);
-    printf("final value %d\n", v);
     return v;
 }
 
