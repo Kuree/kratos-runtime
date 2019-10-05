@@ -135,6 +135,7 @@ void breakpoint_trace(uint32_t id) {
 
 void breakpoint_clock(void) {
     if (pause_clock_edge) {
+        printf("Pause on clock edge\n");
         if (http_client) {
             auto time_val = get_simulation_time("");
             std::string time = "ERROR";
@@ -415,9 +416,26 @@ bool remove_monitor(std::string signal_name) {
     vpi_lock.unlock();
 
     free(cb->name);
+    vpi_free_object(cb->cb_handle);
     delete cb;
 
     return r == 1;
+}
+
+void remove_all_monitor() {
+    std::unordered_set<CbHandle *> handles;
+    for (auto const &iter : cb_handle_map) {
+        auto cb = iter.second;
+        vpi_remove_cb(cb->cb_handle);
+        handles.emplace(cb);
+    }
+    cb_handle_map.clear();
+    for (auto cb : handles) {
+        free(cb->name);
+        vpi_free_object(cb->cb_handle);
+        delete cb;
+    }
+    printf("monitors removed\n");
 }
 
 std::string get_connection_str(const std::string &handle_name, bool is_from) {
@@ -610,6 +628,13 @@ void initialize_runtime() {
             res.status = 401;
             res.set_content("ERROR", "text/plain");
         }
+    });
+
+    http_server->Delete("/monitor", [](const Request &req, Response &res) {
+        printf("here\n");
+        remove_all_monitor();
+        res.status = 200;
+        res.set_content("Okay", "text/plain");
     });
 
     http_server->Post("/continue", [](const Request &req, Response &res) {
