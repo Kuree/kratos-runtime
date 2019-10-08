@@ -673,8 +673,9 @@ void initialize_runtime() {
     });
 
     http_server->Post(R"(/clock/(\w+))", [](const Request &req, Response &res) {
-        auto value = req.matches[1];
+        std::string value = req.matches[1];
         // set the bool to be true
+        printf("pause on clock_edge %s\n", value.c_str());
         pause_clock_edge = value == "on";
         res.status = 200;
         res.set_content("Okay", "text/plain");
