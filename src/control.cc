@@ -36,6 +36,8 @@ std::mutex vpi_lock;
 bool step_over = false;
 // whether to pause at the the clock edge
 bool pause_clock_edge = false;
+// current scope it has to be set to get the connections
+std::string current_scope;
 
 std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
@@ -136,15 +138,34 @@ void breakpoint_trace(uint32_t id) {
 void breakpoint_clock(void) {
     if (pause_clock_edge) {
         printf("Pause on clock edge\n");
-        if (http_client) {
+        if (http_client && db_) {
             auto time_val = get_simulation_time("");
             std::string time = "ERROR";
             if (time_val) time = *time_val;
+            // we need to pull out all the values from the connections
+            auto modules = db_->get_hierarchy(current_scope);
+            std::map<std::string, std::string> values;
+            for (auto const &module : modules) {
+                auto handle = fmt::format("{0}.{1}", module.parent_handle, module.child);
+                auto conn_from = db_->get_connection_from(handle);
+                auto conn_to = db_->get_connection_to(handle);
+                for (auto &conn : conn_from) {
+                    auto var_from_handle = fmt::format("{0}.{1}", conn.handle_from, conn.var_from);
+                    auto var_to_handle = fmt::format("{0}.{1}", conn.handle_to, conn.var_to);
+                    auto value = get_value(var_from_handle);
+                    if (value) {
+                        // from and to are the same
+                        values.emplace(var_from_handle, *value);
+                        values.emplace(var_to_handle, *value);
+                    }
+                }
+            }
+            auto content = json11::Json(json11::Json::object({{"time", time}, {"value", values}}));
             http_client->Post("/status/clock",
-                              fmt::format("{{\"time\": \"{0}\"}}", time),  // NOLINT
+                              content.dump(),  // NOLINT
                               "application/json");
+            runtime_lock.lock();
         }
-        runtime_lock.lock();
     }
 }
 
@@ -659,11 +680,15 @@ void initialize_runtime() {
         res.set_content("Okay", "text/plain");
     });
 
-    http_server->Get(R"(/hierarchy/([\w.$]+))", [](const Request &req, Response &res) {
+    http_server->Post(R"(/hierarchy/([\w.$]+))", [](const Request &req, Response &res) {
         std::string name = req.matches[1];
         if (db_) {
             if (name == "$") name = "";
             auto result = db_->get_hierarchy(name);
+
+            // set the current scope
+            current_scope = name;
+
             std::vector<std::string> names;
             names.reserve(result.size());
             for (auto const &h : result) {
