@@ -12,7 +12,7 @@ always #1 clk = ~clk;
 
 initial begin
 
-    for (int i = 0; i < 4; i++) begin
+    for (int i = 0; i < 20; i++) begin
         in = i;
         #2;
     end

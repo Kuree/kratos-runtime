@@ -38,6 +38,8 @@ bool step_over = false;
 bool pause_clock_edge = false;
 // current scope it has to be set to get the connections
 std::string current_scope;
+// we don't want to send back the values if it's never stopped
+bool has_paused_on_clock = false;
 
 std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
@@ -135,32 +137,37 @@ void breakpoint_trace(uint32_t id) {
     }
 }
 
+json11::Json::object get_graph_value() {
+    auto time_val = get_simulation_time("");
+    std::string time = "ERROR";
+    if (time_val) time = *time_val;
+    // we need to pull out all the values from the connections
+    auto modules = db_->get_hierarchy(current_scope);
+    std::map<std::string, std::string> values;
+    for (auto const &module : modules) {
+        auto handle = fmt::format("{0}.{1}", module.parent_handle, module.child);
+        auto conn_from = db_->get_connection_from(handle);
+        auto conn_to = db_->get_connection_to(handle);
+        for (auto &conn : conn_from) {
+            auto var_from_handle = fmt::format("{0}.{1}", conn.handle_from, conn.var_from);
+            auto var_to_handle = fmt::format("{0}.{1}", conn.handle_to, conn.var_to);
+            auto value = get_value(var_from_handle);
+            if (value) {
+                // from and to are the same
+                values.emplace(var_from_handle, *value);
+                values.emplace(var_to_handle, *value);
+            }
+        }
+    }
+    return json11::Json::object({{"time", time}, {"value", values}});
+}
+
 void breakpoint_clock(void) {
     if (pause_clock_edge) {
+        has_paused_on_clock = true;
         printf("Pause on clock edge\n");
         if (http_client && db_) {
-            auto time_val = get_simulation_time("");
-            std::string time = "ERROR";
-            if (time_val) time = *time_val;
-            // we need to pull out all the values from the connections
-            auto modules = db_->get_hierarchy(current_scope);
-            std::map<std::string, std::string> values;
-            for (auto const &module : modules) {
-                auto handle = fmt::format("{0}.{1}", module.parent_handle, module.child);
-                auto conn_from = db_->get_connection_from(handle);
-                auto conn_to = db_->get_connection_to(handle);
-                for (auto &conn : conn_from) {
-                    auto var_from_handle = fmt::format("{0}.{1}", conn.handle_from, conn.var_from);
-                    auto var_to_handle = fmt::format("{0}.{1}", conn.handle_to, conn.var_to);
-                    auto value = get_value(var_from_handle);
-                    if (value) {
-                        // from and to are the same
-                        values.emplace(var_from_handle, *value);
-                        values.emplace(var_to_handle, *value);
-                    }
-                }
-            }
-            auto content = json11::Json(json11::Json::object({{"time", time}, {"value", values}}));
+            auto content = json11::Json(get_graph_value());
             http_client->Post("/status/clock",
                               content.dump(),  // NOLINT
                               "application/json");
@@ -686,7 +693,6 @@ void initialize_runtime() {
         if (db_) {
             if (name == "$") name = "";
             auto result = db_->get_hierarchy(name);
-
             // set the current scope
             current_scope = name;
 
@@ -695,7 +701,14 @@ void initialize_runtime() {
             for (auto const &h : result) {
                 names.emplace_back(fmt::format("{0}.{1}", h.parent_handle, h.child));
             }
-            auto content = json11::Json(names).dump();
+            std::string content;
+            if (has_paused_on_clock) {
+                auto values = get_graph_value();
+                content =
+                    json11::Json(json11::Json::object({{"name", names}, {"value", values}})).dump();
+            } else {
+                content = json11::Json(json11::Json::object({{"name", names}})).dump();
+            }
             res.status = 200;
             res.set_content(content, "application/json");
         } else {
