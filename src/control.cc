@@ -176,6 +176,14 @@ void breakpoint_clock(void) {
     }
 }
 
+void exception(uint32_t id) {
+    if (http_client) {
+        auto content = get_breakpoint_value(id);
+        http_client->Post("/status/exception", content, "application/json");
+        runtime_lock.lock();
+    }
+}
+
 std::vector<std::pair<uint32_t, std::string>> get_breakpoint(const std::string &body,
                                                              httplib::Response &res) {
     std::string error;
