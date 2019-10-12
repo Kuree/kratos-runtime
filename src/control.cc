@@ -65,19 +65,19 @@ std::string get_breakpoint_value(uint32_t id) {
         for (auto const &variable : variables) {
             // decide if we need to append the top name
             if (variable.is_var) {
-                auto value = get_value(fmt::format("{0}.{1}", variable.handle, variable.var));
+                auto value = get_value(fmt::format("{0}.{1}", variable.handle, variable.value));
                 std::string v;
                 if (value)
                     v = value.value();
                 else
                     v = "ERROR";
-                if (variable.front_var.empty()) {
-                    gen_vars.emplace_back(std::make_pair(variable.var, v));
+                if (variable.name.empty()) {
+                    gen_vars.emplace_back(std::make_pair(variable.value, v));
                 } else {
-                    self_vars.emplace_back(std::make_pair(variable.front_var, v));
+                    self_vars.emplace_back(std::make_pair(variable.name, v));
                 }
             } else {
-                self_vars.emplace_back(variable.front_var, variable.var);
+                self_vars.emplace_back(variable.name, variable.value);
             }
         }
         auto context_vars = db_->get_context_variable(id);
@@ -241,7 +241,7 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     breakpoint_symbol_mapping[breakpoint_id] = {};
     // this is self variables
     for (auto const &v : self_variables) {
-        auto front_var = v.front_var;
+        auto front_var = v.name;
         // if front var is empty, it means it's generator variables
         if (front_var.empty()) continue;
         // hacky way to detect if the front var exists in the expression
@@ -249,13 +249,13 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
         if (is_expr_symbol(expr, front_var)) {
             if (v.is_var) {
                 // compute handle name
-                auto handle_name = fmt::format("{0}.{1}", v.handle, v.var);
+                auto handle_name = fmt::format("{0}.{1}", v.handle, v.value);
                 handle_name = get_handle_name(top_name_, handle_name);
                 breakpoint_symbol_mapping[breakpoint_id].emplace(front_var, handle_name);
                 symbols.emplace(front_var);
             } else {
                 try {
-                    auto value = std::stoi(v.var);
+                    auto value = std::stoi(v.value);
                     constants.emplace(front_var, value);
                 } catch (...) {
                     return false;
