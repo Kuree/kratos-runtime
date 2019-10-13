@@ -98,16 +98,17 @@ array -> port_array
 Since `port_array` is not a scalar, you have to flatten it as following
 ```
 name      | value
------------------
-array.0   | port_1.0
-array.1   | port_1.1
+-------------------------
+array.0   | port_array[0]
+array.1   | port_array[1]
 ```
 If you have multiple hierarchy either in your own variable or in verilog variable
-you can keep adding `.` to build up your hierarchy. The reference debugger will
-reconstruct the original variable in the debugger.
+you can keep adding `.` to build up your hierarchyas long as the `value` is a valid
+verilog handle name. The reference debugger will reconstruct the original variable
+in the debugger.
 
 ## Breakpoint Insertion
-The breakpoing is implemented as a `DPI` function. In cases where your hardware
+The breakpoint is implemented as a `DPI` function. In cases where your hardware
 construction language can only generate Verilog-95 or Verilog-01, you have
 to somehow manage to generate the following SystemVerilog syntax:
 - ```
