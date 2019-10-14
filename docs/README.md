@@ -103,9 +103,40 @@ array.0   | port_array[0]
 array.1   | port_array[1]
 ```
 If you have multiple hierarchy either in your own variable or in verilog variable
-you can keep adding `.` to build up your hierarchyas long as the `value` is a valid
+you can keep adding `.` to build up your hierarchy as long as the `value` is a valid
 verilog handle name. The reference debugger will reconstruct the original variable
 in the debugger.
+
+
+### Context variables
+Context variables refer to variables that exists in the local frame when a statement
+is being executed. You can store any context variables in the `variable` table. You
+should mark any variable used in context `is_context = 1`. The linking process
+is done through `context` table. To allow more compacted
+representation, you can refer to existing variables in the `variable` table using
+the foreign key `variable_id`.
+
+### Generator variables
+Generator variables refers to variables that are associated with the instance itself.
+Generally speaking it has two parts:
+1. Variables defined inside the instance in your own DSL
+2. Verilog variables defined in instance
+
+For category 1, you need to nested everything inside a namespace such as
+`self` in Python and `this` in C++. It follows the same hierarchy rule
+mentioned above. For instance, if defined a class in Python such as
+```Python
+class Foo:
+    def __init__(self):
+        self.num = 1
+```
+`num` should be stored as `name = self.num; value = 1` in the database.
+
+For category 2, since it doesn't have DSL-level correspondence, the `name`
+filed must be empty.
+
+All variables stored as generator variables has to have `is_context = 0`
+in the database.
 
 ## Breakpoint Insertion
 The breakpoint is implemented as a `DPI` function. In cases where your hardware
