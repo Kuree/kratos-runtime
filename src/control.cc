@@ -244,8 +244,6 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
         auto front_var = v.name;
         // if front var is empty, it means it's generator variables
         if (front_var.empty()) continue;
-        // hacky way to detect if the front var exists in the expression
-        front_var = fmt::format("{0}.{1}", "self", front_var);
         if (is_expr_symbol(expr, front_var)) {
             if (v.is_var) {
                 // compute handle name
@@ -402,7 +400,6 @@ int monitor_signal(p_cb_data cb_data_p) {
 }
 
 bool setup_monitor(std::string signal_name) {
-    vpi_lock.lock();
     signal_name = get_handle_name(top_name_, signal_name);
     // get the handle
     vpiHandle vh;
@@ -431,7 +428,6 @@ bool setup_monitor(std::string signal_name) {
         cb_handle->cb_data.user_data = cb_handle->name;
 
         auto r = vpi_register_cb(&cb_handle->cb_data);
-        vpi_lock.unlock();
 
         cb_handle->cb_handle = r;
 
@@ -442,14 +438,12 @@ bool setup_monitor(std::string signal_name) {
 }
 
 bool remove_monitor(std::string signal_name) {
-    vpi_lock.lock();
     signal_name = get_handle_name(top_name_, signal_name);
     if (cb_handle_map.find(signal_name) == cb_handle_map.end()) return false;
     auto cb = cb_handle_map.at(signal_name);
     printf("monitor removed from %s\n", signal_name.c_str());
 
     auto r = vpi_remove_cb(cb->cb_handle);
-    vpi_lock.unlock();
 
     free(cb->name);
     vpi_free_object(cb->cb_handle);
@@ -506,10 +500,13 @@ void initialize_runtime() {
 
     // setup call backs
     http_server->Get("/breakpoint", [](const Request &req, Response &res) {
+        vpi_lock.lock();
         auto bp = get_breakpoint(req.body, res);
+        vpi_lock.unlock();
     });
 
     http_server->Post("/breakpoint", [](const Request &req, Response &res) {
+        vpi_lock.lock();
         auto bps = get_breakpoint(req.body, res);
         if (!bps.empty()) {
             for (auto const &bp : bps) {
@@ -518,34 +515,40 @@ void initialize_runtime() {
                 printf("Breakpoint inserted to %d\n", bp.first);
             }
         }
+        vpi_lock.unlock();
     });
 
     http_server->Delete("/breakpoint", [](const Request &req, Response &res) {
+        vpi_lock.lock();
         auto bps = get_breakpoint(req.body, res);
         if (db_ && !bps.empty()) {
             for (auto const &bp : bps) {
                 remove_break_point(bp.first);
                 remove_expr(bp.first);
+
                 printf("Breakpoint removed from %d\n", bp.first);
-                return;
             }
         } else {
             res.status = 401;
             res.set_content("ERROR", "text/plain");
         }
+        vpi_lock.unlock();
     });
 
     http_server->Delete(R"(/breakpoint/(\d+))", [](const Request &req, Response &res) {
         auto num = req.matches[1];
+        vpi_lock.lock();
         try {
             auto id = std::stoi(num);
             remove_break_point(id);
             remove_expr(id);
+            vpi_lock.unlock();
             printf("Breakpoint removed from %d\n", id);
             res.status = 200;
             res.set_content("Okay", "text/plain");
             return;
         } catch (...) {
+            vpi_lock.unlock();
             res.status = 401;
             res.set_content("ERROR", "text/plain");
             return;
@@ -555,12 +558,14 @@ void initialize_runtime() {
     // delete all breakpoint from a file
     http_server->Delete(R"(/breakpoint/file/([\w./:\\]+))", [](const Request &req, Response &res) {
         auto filename = req.matches[1];
+        vpi_lock.lock();
         auto bps = get_breakpoint_filename(filename, res);
         for (auto const &bp : bps) {
-            printf("Breakpoint removed from %d\n", bp);
+            printf("Bulk: Breakpoint removed from %d\n", bp);
             remove_break_point(bp);
             remove_expr(bp);
         }
+        vpi_lock.unlock();
     });
 
     // get all the files
@@ -644,7 +649,9 @@ void initialize_runtime() {
 
     http_server->Post(R"(/monitor/([\w.$]+))", [](const Request &req, Response &res) {
         auto name = req.matches[1];
+        vpi_lock.lock();
         auto result = setup_monitor(name);
+        vpi_lock.unlock();
         if (result) {
             res.status = 200;
             res.set_content("Okay", "text/plain");
@@ -656,7 +663,9 @@ void initialize_runtime() {
 
     http_server->Delete(R"(/monitor/([\w.$]+))", [](const Request &req, Response &res) {
         auto name = req.matches[1];
+        vpi_lock.lock();
         auto result = remove_monitor(name);
+        vpi_lock.unlock();
         if (result) {
             res.status = 200;
             res.set_content("Okay", "text/plain");
@@ -667,8 +676,9 @@ void initialize_runtime() {
     });
 
     http_server->Delete("/monitor", [](const Request &req, Response &res) {
-        printf("here\n");
+        vpi_lock.lock();
         remove_all_monitor();
+        vpi_lock.unlock();
         res.status = 200;
         res.set_content("Okay", "text/plain");
     });
