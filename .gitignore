@@ -37,3 +37,9 @@ cmake-build-debug
 
 # ncsim
 irun.key
+
+# python
+dist
+build
+wheelhouse
+*.egg-info

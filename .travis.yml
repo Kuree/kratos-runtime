@@ -1,0 +1,16 @@
+matrix:
+    include:
+        - name: "Linux"
+          services:
+            - docker
+          language: minimal
+
+script:
+    - ./scripts/ci.sh
+
+deploy:
+  - provider: script
+    script: /bin/bash scripts/deploy.sh
+    on:
+      branch: master
+      tags: true
