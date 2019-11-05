@@ -50,7 +50,7 @@ std::vector<std::string> Database::get_all_files() {
     return names;
 }
 
-std::vector<Variable> Database::get_variable_mapping(uint32_t breakpoint_id) {
+std::vector<Variable> Database::get_variable_mapping(uint32_t instance_id, uint32_t breakpoint_id) {
     using namespace sqlite_orm;
     try {
         std::vector<Variable> result;
@@ -62,10 +62,9 @@ std::vector<Variable> Database::get_variable_mapping(uint32_t breakpoint_id) {
             columns(&kratos::Variable::name, &kratos::Variable::value, &kratos::Variable::is_var,
                     &kratos::Instance::handle_name, &kratos::BreakPoint::id),
             where(is_equal(&kratos::BreakPoint::id, breakpoint_id) and
-                  is_equal(&kratos::BreakPoint::handle, &kratos::Variable::handle) and
-                  is_equal(&kratos::Instance::id,
-                           &kratos::BreakPoint::handle and
-                               is_equal(&kratos::Variable::is_context, false))));
+                  is_equal(instance_id, &kratos::Variable::handle) and
+                  is_equal(&kratos::Instance::id, instance_id) and
+                  is_equal(&kratos::Variable::is_context, false)));
         for (auto const& v : values) {
             auto const& [name, value, is_var, handle_name, a] = v;
             (void)(a);
@@ -204,4 +203,18 @@ std::vector<Connection> Database::get_connection_from(const std::string& handle_
     } catch (...) {
         return {};
     }
+}
+
+std::optional<uint32_t> Database::get_instance_id(uint32_t breakpoint_id) {
+    using namespace sqlite_orm;
+    try {
+        auto values = storage_->get_all<kratos::InstanceSetEntry>(
+            where(is_equal(&kratos::InstanceSetEntry::breakpoint_id, breakpoint_id)));
+        for (auto const& v : values) {
+            return *v.instance_id;
+        }
+    } catch (...) {
+        return std::nullopt;
+    }
+    return std::nullopt;
 }

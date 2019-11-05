@@ -8,9 +8,9 @@ void teardown_runtime();
 
 extern "C" {
 // this is the breakpoint insert by kratos for each statement
-void breakpoint_trace(uint32_t id);
+void breakpoint_trace(uint32_t instance_id, uint32_t id);
 void breakpoint_clock(void);
-void exception(uint32_t id);
+void exception(uint32_t instance_id, uint32_t id);
 void initialize_runtime_vpi();
 }
 

@@ -10,8 +10,8 @@ int main(int, char **) {
     initialize_runtime();
     while (1) {
         usleep(1000000);
-        breakpoint_trace(1);
-        breakpoint_trace(3);
+        breakpoint_trace(0, 1);
+        breakpoint_trace(0, 3);
     }
     return EXIT_SUCCESS;
 }

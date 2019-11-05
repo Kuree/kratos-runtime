@@ -56,12 +56,12 @@ struct CbHandle {
 // this is for vpi cb struct
 std::unordered_map<std::string, CbHandle *> cb_handle_map;
 
-std::string get_breakpoint_value(uint32_t id) {
+std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
     std::vector<std::pair<std::string, std::string>> self_vars;
     std::vector<std::pair<std::string, std::string>> gen_vars;
     std::vector<std::pair<std::string, std::string>> local_vars;
     if (db_) {
-        auto variables = db_->get_variable_mapping(id);
+        auto variables = db_->get_variable_mapping(instance_id, id);
         for (auto const &variable : variables) {
             // decide if we need to append the top name
             if (variable.is_var) {
@@ -115,7 +115,7 @@ std::string get_breakpoint_value(uint32_t id) {
     return result.dump();
 }
 
-void breakpoint_trace(uint32_t id) {
+void breakpoint_trace(uint32_t instance_id, uint32_t id) {
     if (step_over || !should_continue_simulation(id)) {
         printf("hit breakpoint %d\n", id);
         // if we have a conditional breakpoint
@@ -125,7 +125,7 @@ void breakpoint_trace(uint32_t id) {
         }
         // tell the client that we have hit a clock
         if (http_client) {
-            auto content = get_breakpoint_value(id);
+            auto content = get_breakpoint_value(instance_id, id);
             if (step_over) {
                 http_client->Post("/status/step", content, "application/json");
             } else {
@@ -176,9 +176,9 @@ void breakpoint_clock(void) {
     }
 }
 
-void exception(uint32_t id) {
+void exception(uint32_t instance_id, uint32_t id) {
     if (http_client) {
-        auto content = get_breakpoint_value(id);
+        auto content = get_breakpoint_value(instance_id, id);
         http_client->Post("/status/exception", content, "application/json");
         runtime_lock.lock();
     }
@@ -229,7 +229,9 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     if (expr.empty()) return true;
     if (!db_) return false;
     // query the local port variables
-    auto const self_variables = db_->get_variable_mapping(breakpoint_id);
+    auto op_id = db_->get_instance_id(breakpoint_id);
+    if (!op_id) return false;
+    auto const self_variables = db_->get_variable_mapping(*op_id, breakpoint_id);
     auto const context_variables = db_->get_context_variable(breakpoint_id);
     std::unordered_map<std::string, int64_t> constants;
     std::unordered_set<std::string> symbols;
