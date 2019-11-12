@@ -83,7 +83,8 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
         auto context_vars = db_->get_context_variable(id);
         for (auto const &variable : context_vars) {
             if (variable.is_var) {
-                auto value = get_value(variable.value);
+                auto handle_name = fmt::format("{0}.{1}", variable.handle, variable.value);
+                auto value = get_value(handle_name);
                 std::string v;
                 if (value)
                     v = value.value();
