@@ -10,3 +10,7 @@ def get_lib_path():
 
 def get_ncsim_flag():
     return "-sv_lib libkratos-runtime.so -loadvpi libkratos-runtime.so:initialize_runtime_vpi -access +r"
+
+
+def get_vcs_flag():
+    return "+vpi -load libkratos-runtime.so:initialize_runtime_vpi -acc+=rw"
