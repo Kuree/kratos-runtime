@@ -76,7 +76,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='kratos_runtime',
-    version='0.0.3',
+    version='0.0.4',
     description='Kratos runtime for debugging',
     url='https://github.com/Kuree/kratos-runtime',
     author='Keyi Zhang',
