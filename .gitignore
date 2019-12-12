@@ -44,3 +44,4 @@ build
 wheelhouse
 *.egg-info
 env
+__pycache__

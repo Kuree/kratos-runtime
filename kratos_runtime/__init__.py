@@ -69,6 +69,6 @@ class DebuggerMock:
                 method="GET")
             try:
                 request.urlopen(r)
-                return
-            except:
                 time.sleep(1)
+            except:
+                return
