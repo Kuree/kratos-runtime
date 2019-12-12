@@ -815,6 +815,15 @@ void initialize_runtime() {
         res.set_content("Okay", "text/plain");
     });
 
+    // get status
+    http_server->Get("/status", [](const Request &req, Response &res) {
+        std::string result;
+        if (db_) result = "Connected";
+        else result = "Disconnected";
+        res.status = 200;
+        res.set_content(result, "text/plain");
+    });
+
     // start the http in a different thread
     runtime_thread = std::thread([=]() { http_server->listen("0.0.0.0", runtime_port); });
 

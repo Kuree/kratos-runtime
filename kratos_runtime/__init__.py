@@ -25,13 +25,50 @@ class DebuggerMock:
     def continue_(self):
         r = request.Request("http://localhost:{0}/continue".format(self.port),
                             method="POST")
-        resp = request.urlopen(r)
-        return resp
+        try:
+            resp = request.urlopen(r)
+            return resp
+        except:
+            assert False, "Unable to continue"
 
     def insert_breakpoint(self, filename, line_num):
         data = json.dumps({"filename": filename, "line_num": line_num})
-        r = request.Request("http://localhost:{0}/breakpoint".format(self.port),
-                            method="POST")
+        r = request.Request(
+            "http://localhost:{0}/breakpoint".format(self.port),
+            method="POST")
         r.add_header("Content-Type'", "application/json")
-        resp = request.urlopen(r, data)
-        return resp
+        try:
+            resp = request.urlopen(r, data)
+            return resp
+        except:
+            assert False, "Unable to insert breakpoint"
+
+    def connect(self):
+        import time
+        connected = False
+        trial = 5
+        sleep = 1
+        for _ in range(trial):
+            r = request.Request(
+                "http://localhost:{0}/status".format(self.port),
+                method="GET")
+            try:
+                request.urlopen(r)
+                connected = True
+                break
+            except:
+                time.sleep(sleep)
+                sleep *= 2
+        assert connected, "Unable to connect"
+
+    def wait_till_finish(self):
+        import time
+        while True:
+            r = request.Request(
+                "http://localhost:{0}/status".format(self.port),
+                method="GET")
+            try:
+                request.urlopen(r)
+                return
+            except:
+                time.sleep(1)
