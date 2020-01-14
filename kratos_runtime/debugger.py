@@ -45,10 +45,11 @@ class DebuggerMock:
         import time
         connected = False
         trial = 5
-        sleep = 1
+        sleep = 0.5
         for _ in range(trial):
             r = self._get("status")
             if r is not None:
+                connected = True
                 break
             time.sleep(sleep)
             sleep *= 2
@@ -74,6 +75,10 @@ class DebuggerMock:
     def get_value(self, handle_name):
         r = self._get("value/" + handle_name)
         return r
+
+    def set_pause_on_clock(self, on=True):
+        r = self._post("clock/" + ("on" if on else "off"))
+        assert r is not None, "Unable to pause on clock edge"
 
 
 if __name__ == "__main__":

@@ -7,6 +7,12 @@ docker run -d --name manylinux --rm -it --mount type=bind,source="$(pwd)"/../kra
 docker exec -i manylinux bash -c 'cd kratos-runtime && python setup.py bdist_wheel'
 docker exec -i manylinux bash -c 'cd kratos-runtime && auditwheel show dist/*'
 docker exec -i manylinux bash -c 'cd kratos-runtime && auditwheel repair dist/*'
+# remove the version dependencies
+docker exec -i manylinux bash -c 'cd /kratos-runtime/scripts && ./fix_wheel.sh'
+docker exec -i manylinux bash -c "cd /kratos-runtime/scripts && pip install dist/*.whl"
+# install the python wheel and test it using the mock
+docker exec -i manylinux bash -c "pip install pytest twine"
+docker exec -i manylinux bash -c "cd /kratos-runtime && pytest tests/"
 
 
 echo [distutils]                                  > ~/.pypirc
