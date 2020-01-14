@@ -72,3 +72,38 @@ class DebuggerMock:
                 time.sleep(1)
             except:
                 return
+
+    def is_paused(self):
+        r = request.Request(
+            "http://localhost:{0}/status/simulation".format(self.port),
+            method="GET")
+        try:
+            resp = request.urlopen(r)
+            status = resp.read().decode("ascii")
+            if status == "Paused":
+                return True
+        except Exception as ex:
+            return False
+
+    def wait_till_pause(self):
+        import time
+        while not self.is_paused():
+            time.sleep(1)
+
+    def get_value(self, handle_name):
+        r = request.Request(
+            "http://localhost:{0}/value/{1}".format(self.port, handle_name),
+            method="GET")
+        try:
+            resp = request.urlopen(r)
+            status = resp.read().decode("ascii")
+            return status
+        except:
+            return None
+
+
+if __name__ == "__main__":
+    mock = DebuggerMock()
+    print(mock.is_paused())
+    print(mock.get_value("mod.in"))
+    mock.continue_()

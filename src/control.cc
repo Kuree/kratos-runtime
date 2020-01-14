@@ -1,10 +1,13 @@
 #include "control.hh"
+
 #include <unistd.h>
+
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+
 #include "db.hh"
 #include "expr.hh"
 #include "fmt/format.h"
@@ -34,6 +37,8 @@ std::mutex vpi_lock;
 // step over. notice that this is not mutex protected. You should not set step over during
 // the simulation
 bool step_over = false;
+// is the simulation paused
+bool paused = false;
 // whether to pause at the the clock edge
 bool pause_clock_edge = false;
 // current scope it has to be set to get the connections
@@ -52,6 +57,16 @@ struct CbHandle {
     vpiHandle cb_handle = nullptr;
     char *name = nullptr;
 };
+
+void pause_sim() {
+    paused = true;
+    runtime_lock.lock();
+}
+
+void un_pause_sim() {
+    paused = false;
+    runtime_lock.unlock();
+}
 
 // this is for vpi cb struct
 std::unordered_map<std::string, CbHandle *> cb_handle_map;
@@ -133,8 +148,8 @@ void breakpoint_trace(uint32_t instance_id, uint32_t id) {
                 http_client->Post("/status/breakpoint", content, "application/json");
             }
         }
-        // hold the lock
-        runtime_lock.lock();
+        // pause the simulation
+        pause_sim();
     }
 }
 
@@ -172,7 +187,7 @@ void breakpoint_clock(void) {
             http_client->Post("/status/clock",
                               content.dump(),  // NOLINT
                               "application/json");
-            runtime_lock.lock();
+            pause_sim();
         }
     }
 }
@@ -181,7 +196,7 @@ void exception(uint32_t instance_id, uint32_t id) {
     if (http_client) {
         auto content = get_breakpoint_value(instance_id, id);
         http_client->Post("/status/exception", content, "application/json");
-        runtime_lock.lock();
+        pause_sim();
     }
 }
 
@@ -688,14 +703,14 @@ void initialize_runtime() {
 
     http_server->Post("/continue", [](const Request &req, Response &res) {
         step_over = false;
-        runtime_lock.unlock();
+        un_pause_sim();
         res.status = 200;
         res.set_content("Okay", "text/plain");
     });
 
     http_server->Post("/step_over", [](const Request &req, Response &res) {
         step_over = true;
-        runtime_lock.unlock();
+        un_pause_sim();
         res.status = 200;
         res.set_content("Okay", "text/plain");
     });
@@ -810,7 +825,7 @@ void initialize_runtime() {
         // stop the simulation
         vpi_control(vpiFinish, 1);
         // unlock it if it's locked
-        runtime_lock.unlock();
+        un_pause_sim();
         res.status = 200;
         res.set_content("Okay", "text/plain");
     });
@@ -818,8 +833,21 @@ void initialize_runtime() {
     // get status
     http_server->Get("/status", [](const Request &req, Response &res) {
         std::string result;
-        if (db_) result = "Connected";
-        else result = "Disconnected";
+        if (db_)
+            result = "Connected";
+        else
+            result = "Disconnected";
+        res.status = 200;
+        res.set_content(result, "text/plain");
+    });
+
+    // get simulation status
+    http_server->Get("/status/simulation", [](const Request &req, Response &res) {
+        std::string result;
+        if (paused)
+            result = "Paused";
+        else
+            result = "Running";
         res.status = 200;
         res.set_content(result, "text/plain");
     });
@@ -829,7 +857,7 @@ void initialize_runtime() {
 
     // by default it's locked
     runtime_lock.lock();
-    runtime_lock.lock();
+    pause_sim();
 }
 
 PLI_INT32 initialize_server_vpi(s_cb_data *) {
@@ -842,7 +870,7 @@ void teardown_runtime() {
     if (http_client) {
         http_client->Post("/stop", "", "text/plain");
     }
-    runtime_lock.unlock();
+    un_pause_sim();
     http_server->stop();
     // this may take some time due to system resource allocation
     runtime_thread.join();
