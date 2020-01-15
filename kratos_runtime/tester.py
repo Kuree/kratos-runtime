@@ -66,8 +66,6 @@ class VerilatorTester(Tester):
         subprocess.check_call(args, cwd=self.cwd)
         # symbolic link it first
         env = self._link_lib(os.path.join(self.cwd, "obj_dir"))
-        # also link the cwd
-        self._link_lib(self.cwd)
 
         # find the shortest file
         mk_files = []

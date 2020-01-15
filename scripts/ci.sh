@@ -12,6 +12,7 @@ docker exec -i manylinux bash -c 'cd /kratos-runtime/scripts && pip install whee
 # run in a new container where we have verilator installed
 docker run -d --name test --rm -it --mount type=bind,source="$(pwd)"/../kratos-runtime,target=/kratos-runtime keyiz/garnet-flow bash
 # install the python wheel and test it using the mock
+ls -l scripts/dist/
 docker exec -i test bash -c "cd /kratos-runtime/scripts && pip install dist/*.whl"
 docker exec -i test bash -c "python -m pip install pytest twine"
 docker exec -i test bash -c "cd /kratos-runtime && python -m pytest tests/"

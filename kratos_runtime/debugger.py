@@ -3,8 +3,27 @@ import json
 
 
 class DebuggerMock:
-    def __init__(self, port=8888):
+    def __init__(self, port=8888, design=None, top_prefix="TOP"):
         self.port = port
+        self.design = design
+        if top_prefix is not None:
+            self.top_prefix = top_prefix + "."
+        else:
+            self.top_prefix = ""
+        self.regs = []
+        self._get_regs()
+
+    def _get_regs(self):
+        if self.design is not None:
+            import kratos
+            import _kratos
+            # get all the regs
+            assert isinstance(self.design, [kratos.Generator, _kratos.Generator])
+            if isinstance(self.design, kratos.Generator):
+                design = self.design.internal_generator
+            else:
+                design = self.design
+            self.regs = _kratos.passes.extract_register_names(design)
 
     def _post(self, sub_url, header=None, data=None):
         r = request.Request("http://localhost:{0}/{1}".format(self.port, sub_url),
@@ -80,9 +99,12 @@ class DebuggerMock:
         r = self._post("clock/" + ("on" if on else "off"))
         assert r is not None, "Unable to pause on clock edge"
 
-
-if __name__ == "__main__":
-    mock = DebuggerMock()
-    print(mock.is_paused())
-    print(mock.get_value("mod.in"))
-    mock.continue_()
+    def get_all_reg_values(self):
+        values = {}
+        for name in self.regs:
+            _name = self.top_prefix + name
+            value = self.get_value(_name)
+            if value is None or not name.isnumeric():
+                raise Exception("Unable to get value for {0}. Got {1}".format(_name, value))
+            values[name] = value
+        return values

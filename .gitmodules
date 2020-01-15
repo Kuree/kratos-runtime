@@ -18,4 +18,4 @@
 	url = https://github.com/dropbox/json11
 [submodule "extern/exprtk"]
 	path = extern/exprtk
-	url = https://github.com/ArashPartow/exprtk
+	url = https://github.com/Kuree/exprtk
