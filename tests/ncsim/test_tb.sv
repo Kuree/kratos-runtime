@@ -1,4 +1,3 @@
-`timescale 1ns / 1ps
 module TOP;
 
 logic[15:0] in1;
