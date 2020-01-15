@@ -6,5 +6,5 @@ target_include_directories(kratos-runtime PRIVATE ../extern/cpp-httplib
         ../extern/fmt ../extern/sqlite_orm/include
         ../extern
         ../extern/sqlite/include)
-target_link_libraries(kratos-runtime ${CMAKE_THREAD_LIBS_INIT} ${STATIC_FLAG} kratos json11
+target_link_libraries(kratos-runtime ${CMAKE_THREAD_LIBS_INIT} ${STATIC_FLAG} sqlite3 fmt json11
         stdc++fs)

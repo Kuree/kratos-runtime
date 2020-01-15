@@ -45,6 +45,8 @@ bool pause_clock_edge = false;
 std::string current_scope;
 // we don't want to send back the values if it's never stopped
 bool has_paused_on_clock = false;
+// if no client server, we don't need to send information back
+bool use_client_request = false;
 
 std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
@@ -149,7 +151,9 @@ void breakpoint_trace(uint32_t instance_id, uint32_t id) {
             }
         }
         // pause the simulation
-        pause_sim();
+        // only pause when we know we can continue
+        if (http_client || use_client_request)
+            pause_sim();
     }
 }
 
@@ -187,8 +191,9 @@ void breakpoint_clock(void) {
             http_client->Post("/status/clock",
                               content.dump(),  // NOLINT
                               "application/json");
-            pause_sim();
         }
+        if (http_client || use_client_request)
+            pause_sim();
     }
 }
 
@@ -785,6 +790,16 @@ void initialize_runtime() {
         auto ip_json = payload["ip"];
         auto port_json = payload["port"];
         auto db_json = payload["database"];
+        // this is a short cut
+        if (!ip_json.is_null() && ip_json.is_string()) {
+            if (ip_json.string_value() == "255.255.255.255") {
+                // this is the client no server mode
+                res.status = 200;
+                res.set_content("Okay", "text/plain");
+                use_client_request = true;
+                return;
+            }
+        }
         bool has_error = false;
         if (port_json.is_null() || ip_json.is_null() || db_json.is_null() ||
             !port_json.is_number() || !ip_json.is_string() || !db_json.is_string()) {

@@ -6,11 +6,13 @@ import shutil
 
 
 class Tester:
-    def __init__(self, *files: str, cwd=None):
+    def __init__(self, *files: str, cwd=None, clean_up_run=True):
         self.files = []
         for file in files:
             self.files.append(os.path.abspath(file))
         self.cwd = self._process_cwd(cwd)
+        self.clean_up_run = clean_up_run
+        self.__process = []
 
     @abstractmethod
     def run(self, blocking=False):
@@ -35,27 +37,30 @@ class Tester:
         env["LD_LIBRARY_PATH"] = os.path.dirname(dst_path)
         return env
 
-    @staticmethod
-    def _run(args, cwd, env, blocking):
+    def _run(self, args, cwd, env, blocking):
         if blocking:
             subprocess.check_call(args, cwd=cwd, env=env)
         else:
-            subprocess.Popen(args, cwd=cwd, env=env)
+            p = subprocess.Popen(args, cwd=cwd, env=env)
+            self.__process.append(p)
 
     def clean_up(self):
-        if os.path.exists(self.cwd) and os.path.isdir(self.cwd):
+        if self.clean_up_run and os.path.exists(self.cwd) and os.path.isdir(
+                self.cwd):
             shutil.rmtree(self.cwd)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.clean_up()
+        for p in self.__process:
+            p.kill()
 
     def __enter__(self):
         return self
 
 
 class VerilatorTester(Tester):
-    def __init__(self, tb_file, *files: str, cwd=None):
-        super().__init__(*files, cwd=cwd)
+    def __init__(self, tb_file, *files: str, cwd=None, clean_up_run=True):
+        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
         self.tb_file = os.path.abspath(tb_file)
 
     def run(self, blocking=False):
@@ -76,20 +81,22 @@ class VerilatorTester(Tester):
         assert len(mk_files) > 0, "Unable to find any makefile from Verilator"
         mk_file = mk_files[0]
         # make the file
-        subprocess.check_call(["make", "-C", "obj_dir", "-f", mk_file], cwd=self.cwd, env=env)
+        subprocess.check_call(["make", "-C", "obj_dir", "-f", mk_file],
+                              cwd=self.cwd, env=env)
         # run the application
         name = os.path.join("obj_dir", mk_file.replace(".mk", ""))
+        print("Running " + name)
         self._run([name], self.cwd, env, blocking)
 
 
 class NCSimTester(Tester):
-    def __init__(self, *files: str, cwd=None):
-        super().__init__(*files, cwd=cwd)
+    def __init__(self, *files: str, cwd=None, clean_up_run=True):
+        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
 
     def run(self, blocking=False):
         env = self._link_lib(self.cwd)
         # run it
         args = ["irun"] + list(self.files)
         args += get_ncsim_flag().split()
-        print(args)
+        print("Running irun")
         self._run(args, self.cwd, env, blocking)

@@ -13,7 +13,7 @@ docker exec -i manylinux bash -c 'cd /kratos-runtime/scripts && pip install whee
 docker run -d --name test --rm -it --mount type=bind,source="$(pwd)"/../kratos-runtime,target=/kratos-runtime keyiz/garnet-flow bash
 # install the python wheel and test it using the mock
 docker exec -i test bash -c "cd /kratos-runtime/scripts && python3 -m pip install dist/*.whl"
-docker exec -i test bash -c "python3 -m pip install pytest twine && rm /usr/local/bin/pytest"
+docker exec -i test bash -c "python3 -m pip install pytest twine kratos && rm /usr/local/bin/pytest"
 docker exec -i test bash -c "cp -r /kratos-runtime/tests/ /tests/ && python3 -m pytest /tests/"
 
 
