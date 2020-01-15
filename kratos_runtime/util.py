@@ -5,6 +5,7 @@ def get_lib_path():
     filename = "libkratos-runtime.so"
     dirname = os.path.dirname(os.path.dirname(__file__))
     lib_path = os.path.join(dirname, filename)
+    assert os.path.isfile(lib_path)
     return lib_path
 
 
