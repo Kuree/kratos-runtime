@@ -3,6 +3,7 @@ from kratos_runtime import VerilatorTester, NCSimTester
 import os
 import shutil
 import pytest
+import tempfile
 
 
 use_ncsim = shutil.which("irun") is not None
@@ -39,17 +40,16 @@ def test_ncsim_continue():
 
 
 def test_state_dump():
-    import kratos
-    import _kratos
-    from kratos import always_ff
+    from kratos import always_ff, Generator, posedge
+    import kratos.passes
 
-    mod = kratos.Generator("mod")
+    mod = Generator("mod")
     a = mod.input("a", 4)
     b = mod.output("b", 4)
     rst = mod.reset("rst")
     clk = mod.clock("clk")
 
-    @always_ff((kratos.posedge, "clk"), (kratos.posedge, "rst"))
+    @always_ff((posedge, "clk"), (posedge, "rst"))
     def code():
         if rst:
             b = 0
@@ -58,36 +58,72 @@ def test_state_dump():
 
     mod.add_code(code)
     # insert verilator directives
-    _kratos.passes.insert_verilator_public(mod.internal_generator)
+    kratos.passes.insert_verilator_public(mod.internal_generator)
     filename = get_file_path("test_state_dump/mod.sv")
     kratos.verilog(mod, filename=filename, insert_debug_info=True,
                    insert_break_on_edge=True)
-    # verilator uses TOP
     tb_file = get_file_path("test_state_dump/test.cc")
     with VerilatorTester(tb_file, filename) as tester:
         tester.run()
+        # verilator uses TOP
         debugger = DebuggerMock(design=mod, prefix_top="TOP")
         debugger.connect()
         assert debugger.is_paused()
-        debugger.set_pause_on_clock(True)
-        debugger.continue_()
-        debugger.wait_till_pause()
+        # records the states
+        states = debugger.record_state()
+        assert len(states) == 4
         s = 0
         for i in range(4):
             s += i
-            regs = debugger.get_all_reg_values()
-            in_, out_ = debugger.get_io_values()
+            in_, regs, out_ = states[i]
             assert len(regs) == 1
             assert "mod.b" in regs
             assert regs
             assert out_["mod.b"] == s
             assert in_["mod.a"] == i + 1
-            debugger.continue_()
-            if i != 4 - 1:
-                debugger.wait_till_pause()
 
-        debugger.wait_till_finish()
+
+def test_fault_design_state_dump():
+    from kratos import always_ff, Generator, posedge
+    import kratos.passes
+
+    mod = Generator("mod")
+    a = mod.input("a", 4)
+    b = mod.output("b", 4)
+    rst = mod.reset("rst")
+    clk = mod.clock("clk")
+
+    @always_ff((posedge, "clk"), (posedge, "rst"))
+    def code():
+        if rst:
+            b = 0
+        else:
+            if a > 2:
+                b = a + b + 1
+            else:
+                b = a + b
+
+    mod.add_code(code)
+    # insert verilator directives
+    kratos.passes.insert_verilator_public(mod.internal_generator)
+    filename = get_file_path("test_state_dump/mod.sv")
+    kratos.verilog(mod, filename=filename, insert_debug_info=True,
+                   insert_break_on_edge=True)
+    tb_file = get_file_path("test_state_dump/test.cc")
+    with VerilatorTester(tb_file, filename) as tester:
+        tester.run()
+        # verilator uses TOP
+        debugger = DebuggerMock(design=mod, prefix_top="TOP")
+        debugger.connect()
+        assert debugger.is_paused()
+        # records the states
+        states = debugger.record_state()
+    assert len(states) == 4
+    with tempfile.TemporaryDirectory() as temp:
+        filename = os.path.join(temp, "states.json")
+        debugger.dump_state(states, filename)
+        assert os.path.isfile(filename)
 
 
 if __name__ == "__main__":
-    test_state_dump()
+    test_fault_design_state_dump()

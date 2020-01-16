@@ -98,7 +98,10 @@ class DebuggerMock:
 
     def wait_till_pause(self):
         import time
-        while not self.is_paused():
+        while True:
+            r = self._get("status/simulation")
+            if r is None or r == "Paused":
+                break
             time.sleep(1)
 
     def get_value(self, handle_name):
@@ -145,3 +148,31 @@ class DebuggerMock:
                     out_[handle_name] = v
 
         return in_, out_
+
+    def record_state(self, num_wait_reset=1):
+        # start the simulation until it ends
+        assert self.is_paused()
+        self.set_pause_on_clock(True)
+        for _ in range(num_wait_reset):
+            self.continue_()
+            self.wait_till_pause()
+        states = []
+        # start recording the state
+        while self.is_paused():
+            regs = self.get_all_reg_values()
+            in_, out_ = self.get_io_values()
+            states.append((in_, regs, out_))
+            self.continue_()
+            self.wait_till_pause()
+        self.wait_till_finish()
+        return states
+
+    @staticmethod
+    def dump_state(state, filename):
+        result = []
+        for in_, reg, out_ in state:
+            entry = {"in": in_, "reg": reg, "out": out_}
+            result.append(entry)
+        import json
+        with open(filename, "w+") as f:
+            json.dump(result, f)

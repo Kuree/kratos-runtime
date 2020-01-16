@@ -37,7 +37,6 @@ int main(int argc, char **argv) {
 
         tb->clk = 0;
         tb->eval();
-        printf("%d\n", tb->a);
     }
     tb->final();
 
