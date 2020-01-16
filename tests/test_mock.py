@@ -57,7 +57,6 @@ def test_state_dump():
             b = a + b
 
     mod.add_code(code)
-    mod.instance_name = "TOP.mod"
     # insert verilator directives
     _kratos.passes.insert_verilator_public(mod.internal_generator)
     filename = get_file_path("test_state_dump/mod.sv")
@@ -67,7 +66,7 @@ def test_state_dump():
     tb_file = get_file_path("test_state_dump/test.cc")
     with VerilatorTester(tb_file, filename) as tester:
         tester.run()
-        debugger = DebuggerMock(design=mod)
+        debugger = DebuggerMock(design=mod, prefix_top="TOP")
         debugger.connect()
         assert debugger.is_paused()
         debugger.set_pause_on_clock(True)
@@ -79,10 +78,10 @@ def test_state_dump():
             regs = debugger.get_all_reg_values()
             in_, out_ = debugger.get_io_values()
             assert len(regs) == 1
-            assert "TOP.mod.b" in regs
+            assert "mod.b" in regs
             assert regs
-            assert out_["TOP.mod.b"] == s
-            assert in_["TOP.mod.a"] == i + 1
+            assert out_["mod.b"] == s
+            assert in_["mod.a"] == i + 1
             debugger.continue_()
             if i != 4 - 1:
                 debugger.wait_till_pause()

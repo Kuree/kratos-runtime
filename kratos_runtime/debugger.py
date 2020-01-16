@@ -3,11 +3,12 @@ import json
 
 
 class DebuggerMock:
-    def __init__(self, port=8888, design=None):
+    def __init__(self, port=8888, design=None, prefix_top=""):
         self.port = port
         self.design = design
         self.regs = []
         self._get_regs()
+        self.prefix_top = prefix_top
 
     @staticmethod
     def _get_json_header():
@@ -101,6 +102,8 @@ class DebuggerMock:
             time.sleep(1)
 
     def get_value(self, handle_name):
+        if self.prefix_top:
+            handle_name = ".".join([self.prefix_top, handle_name])
         r = self._get("value/" + handle_name)
         if r is None or not r.isnumeric():
             r = None
