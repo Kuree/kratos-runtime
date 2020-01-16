@@ -66,7 +66,8 @@ class VerilatorTester(Tester):
     def run(self, blocking=False):
         # compile it first
         lib_name = os.path.basename(get_lib_path())
-        args = ["verilator", "--cc", "--exe", "--vpi", lib_name]
+        verilator = shutil.which("verilator")
+        args = [verilator, "--cc", "--exe", "--vpi", lib_name]
         args += self.files + [self.tb_file]
         subprocess.check_call(args, cwd=self.cwd)
         # symbolic link it first

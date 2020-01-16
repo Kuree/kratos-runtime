@@ -102,6 +102,10 @@ class DebuggerMock:
 
     def get_value(self, handle_name):
         r = self._get("value/" + handle_name)
+        if r is None or not r.isnumeric():
+            r = None
+        else:
+            r = int(r)
         return r
 
     def set_pause_on_clock(self, on=True):
@@ -112,7 +116,7 @@ class DebuggerMock:
         values = {}
         for name in self.regs:
             value = self.get_value(name)
-            if value is None or not value.isnumeric():
+            if value is None:
                 raise Exception(
                     "Unable to get value for {0}. Got {1}".format(name, value))
             values[name] = value
@@ -128,11 +132,11 @@ class DebuggerMock:
                 p = self.design.ports[port_name]
                 handle_name = p.handle_name()
                 v = self.get_value(handle_name)
-                if v is None or not v.isnumeric():
+                if v is None:
                     raise Exception(
                         "Unable to get value for {0}. Got {1}".format(
                             handle_name, v))
-                if p.direction == _kratos.PortDirection.In:
+                if p.port_direction == _kratos.PortDirection.In:
                     in_[handle_name] = v
                 else:
                     out_[handle_name] = v

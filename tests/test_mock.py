@@ -39,7 +39,6 @@ def test_ncsim_continue():
 
 
 def test_state_dump():
-    pytest.skip("not working with the release version of kratos")
     import kratos
     import _kratos
     from kratos import always_ff
@@ -58,14 +57,15 @@ def test_state_dump():
             b = a + b
 
     mod.add_code(code)
-    mod.instance_name = "TOP"
-
+    mod.instance_name = "TOP.mod"
+    # insert verilator directives
+    _kratos.passes.insert_verilator_public(mod.internal_generator)
     filename = get_file_path("test_state_dump/mod.sv")
     kratos.verilog(mod, filename=filename, insert_debug_info=True,
                    insert_break_on_edge=True)
     # verilator uses TOP
     tb_file = get_file_path("test_state_dump/test.cc")
-    with VerilatorTester(tb_file, filename, clean_up_run=False) as tester:
+    with VerilatorTester(tb_file, filename) as tester:
         tester.run()
         debugger = DebuggerMock(design=mod)
         debugger.connect()
@@ -73,13 +73,21 @@ def test_state_dump():
         debugger.set_pause_on_clock(True)
         debugger.continue_()
         debugger.wait_till_pause()
-        regs = debugger.get_all_reg_values()
-        # in_, out_ = debugger.get_io_values()
-        assert len(regs) == 1
-        assert "TOP.b" in regs
-        assert regs
-        debugger.continue_()
-        debugger.wait_till_pause()
+        s = 0
+        for i in range(4):
+            s += i
+            regs = debugger.get_all_reg_values()
+            in_, out_ = debugger.get_io_values()
+            assert len(regs) == 1
+            assert "TOP.mod.b" in regs
+            assert regs
+            assert out_["TOP.mod.b"] == s
+            assert in_["TOP.mod.a"] == i + 1
+            debugger.continue_()
+            if i != 4 - 1:
+                debugger.wait_till_pause()
+
+        debugger.wait_till_finish()
 
 
 if __name__ == "__main__":
