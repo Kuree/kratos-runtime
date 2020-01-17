@@ -18,6 +18,15 @@ def get_file_path(file):
     return os.path.abspath(f)
 
 
+def template_file(src_filename, dst_filename, values):
+    values = [str(v) for v in values]
+    with open(src_filename) as f:
+        template = f.read()
+        content = template.replace("${input}", "{" + ", ".join(values) + "}")
+        with open(dst_filename, "w+") as ff:
+            ff.write(content)
+
+
 def test_verilator_continue():
     file = get_file_path("verilator/test.sv")
     tb_file = get_file_path("verilator/test.cc")
@@ -92,11 +101,8 @@ def test_state_dump():
     tb_file = get_file_path("test_state_dump/test.cc.in")
     with tempfile.TemporaryDirectory() as temp:
         tb = os.path.join(temp, "test.cc")
-        with open(tb_file) as f:
-            template = f.read()
-            content = template.replace("${input}", "{1, 2, 3, 4}")
-            with open(tb, "w+") as ff:
-                ff.write(content)
+        template_file(tb_file, tb, values=[1, 2, 3, 4])
+
         with VerilatorTester(tb, filename, cwd=temp) as tester:
             tester.run()
             # verilator uses TOP
@@ -128,19 +134,14 @@ def test_fault_design_coverage():
     kratos.verilog(mod, filename=filename, insert_debug_info=True,
                    insert_break_on_edge=True)
     tb_file = get_file_path("test_state_dump/test.cc.in")
-    input_correct = "{1, 2, 2, 1}"
-    input_wrong = "{1, 2, 3, 4}"
+    input_correct = [1, 2, 2, 1]
+    input_wrong = [1, 2, 3, 4]
     with tempfile.TemporaryDirectory() as temp:
         with open(tb_file) as f:
             correct_tb_file = os.path.join(temp, "correct.cc")
             wrong_tb_file = os.path.join(temp, "wrong.cc")
-            template = f.read()
-            with open(correct_tb_file, "w+") as ff:
-                content = template.replace("${input}", input_correct)
-                ff.write(content)
-            with open(wrong_tb_file, "w+") as ff:
-                content = template.replace("${input}", input_wrong)
-                ff.write(content)
+            template_file(tb_file, correct_tb_file, input_correct)
+            template_file(tb_file, wrong_tb_file, input_wrong)
         tb_files = [correct_tb_file, wrong_tb_file]
         run_states = []
         for tb_file in tb_files:
