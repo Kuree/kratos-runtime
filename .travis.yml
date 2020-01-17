@@ -4,6 +4,19 @@ matrix:
           services:
             - docker
           language: minimal
+          env:
+            - OS=linux
+        - name: "Mac OSX"
+          os: osx
+          language: shell
+          osx_image: xcode10.1
+          env: OS=osx
+          addons:
+              homebrew:
+                packages:
+                - gcc@8
+                - verilator
+
 
 script:
     - ./scripts/ci.sh
