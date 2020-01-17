@@ -59,16 +59,15 @@ class Tester:
 
 
 class VerilatorTester(Tester):
-    def __init__(self, tb_file, *files: str, cwd=None, clean_up_run=False):
+    def __init__(self, *files: str, cwd=None, clean_up_run=False):
         super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
-        self.tb_file = os.path.abspath(tb_file)
 
     def run(self, blocking=False):
         # compile it first
         lib_name = os.path.basename(get_lib_path())
         verilator = shutil.which("verilator")
         args = [verilator, "--cc", "--exe", "--vpi", lib_name]
-        args += self.files + [self.tb_file]
+        args += self.files
         subprocess.check_call(args, cwd=self.cwd)
         # symbolic link it first
         env = self._link_lib(os.path.join(self.cwd, "obj_dir"))

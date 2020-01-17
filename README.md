@@ -1,10 +1,41 @@
 # Kratos Debugger Runtime
-This is the runtime library required to debug Kratos hardware designs. You
-need a C++17 compatible compiler, such as `g++-8` to compile the library.
+This is the runtime library required to debug Kratos hardware designs. It
+offers realtime interaction between the simulator and a debugger, which
+can either be Visual Studio Code, or any debugger that talks HTTP REST
+protocol.
 
-## How to use Kratos-Runtime
-The following instruction is based on Linux and tested against Verilator and
-ncsim.
+This library also ships with a Python API which you can use in your Python
+code to control the simulator. It does not implement the full-feature of
+all the protocols the runtime supports, but it's a good place to start if
+you are going to implement your own debugger to interface the runtime.
+
+## How to install kratos-runtime
+There are a couple ways to install kratos-runtime. You
+need a C++17 compatible compiler, such as `g++-8` to compile the library.
+The Python API requires Python3 to run.
+
+### Install from PyPI
+If you're using Linux, the easiest way to install is through pip. Do
+```Bash
+pip install kratos-runtime
+```
+After installing, do
+```Bash
+python -c "from kratos_runtime import get_lib_path; print(get_lib_path())"
+```
+which will tell you where the pre-built library is and you can use that to
+link to your design. You can also call `get_ncsim_flag()` to get necessary
+flags.
+
+### Build from source
+If you want the built-in Python tools:
+```Bash
+$ git clone https://github.com/Kuree/kratos-runtime
+$ cd kratos-runtime
+$ git submodule update --init --recursive
+$ pip install .
+```
+If you just want the runtime library, do:
 
 ```Bash
 $ git clone https://github.com/Kuree/kratos-runtime
@@ -20,12 +51,16 @@ After that, you can find the library as `build/src/libkratos-runtime.so`. You
 can either copy that library to any place you like or simply  use symbolic
 link.
 
-### Generate Kratos-Runtime debug database for your design
+## How to use kratos-runtime
+The following instruction is based on Linux and tested against Verilator and
+ncsim.
+
+## Generate Kratos-Runtime debug database for your design
 When calling `verilog()` function, you can supply another argument called 
 `debug_db_filename` to specify the location where kratos can output the
 debug files,
 ```Python
-verilog(design, debug_db_filename="debug.db")
+verilog(your_design, debug_db_filename="debug.db", insert_debug_info=True)
 ```
 
 ### Using Kratos-runtime with Verilator
@@ -34,10 +69,8 @@ Once you have compiled the shared library, you can ask
 since we need to read the internal signals, we need to inject `verilator`
 specific info via a pass:
 ```Python
-_kratos.passes.insert_verilator_public(design.internal_generator)
+kratos.passes.insert_verilator_public(your_design.internal_generator)
 ```
-`_kratos` is the namespace for native C++ binding, you can use it via
-`import _kratos`.
 
 When invoking the `verilator` command, you need to specify the kratos runtime
 name as well as `--vpi` switch, for instance:
@@ -56,6 +89,16 @@ $ LD_LIBRARY_PATH=./obj_dir/ ./obj_dir/Vtest
 Or you can let the linker to fix the shared library path in the `verilator`,
 which is beyond the scope of this tutorial.
 
+An alternative is to use the built-in Python helper class.
+
+You can use `kratos_runtime.VerilatorTester` to run your verilator design.
+```Python
+with VerilatorTester(*files, cwd=temp) as tester:
+    tester.run()
+```
+Where `files` is a list of files. By default the `run()` is non-blocking, so
+you can attach your debugger with the runtime.
+
 ### Using kratos-runtime with Ncsim
 Ncsim is much easier to use than `verilator`. Once you have the design, simply
 tell the simulator that you want to load the vpi and dpi library, such as
@@ -65,6 +108,12 @@ irun test_tb.sv test.sv -sv_lib libkratos-runtime.so -loadvpi libkratos-runtime.
 ```
 
 `-access +r` is necessary to allow the runtime to read out simulation variables.
+
+You can also use `kratos_runtime.NCSimTester` to run your design.
+```Python
+with NCSimTester(*files) as tester:
+    tester.run()
+```
 
 ### What to do after launch the simulation
 You can now use any debugger that's compatible with the Kratos debug protocol.
