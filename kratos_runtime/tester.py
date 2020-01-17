@@ -6,7 +6,7 @@ import shutil
 
 
 class Tester:
-    def __init__(self, *files: str, cwd=None, clean_up_run=True):
+    def __init__(self, *files: str, cwd=None, clean_up_run=False):
         self.files = []
         for file in files:
             self.files.append(os.path.abspath(file))
@@ -59,7 +59,7 @@ class Tester:
 
 
 class VerilatorTester(Tester):
-    def __init__(self, tb_file, *files: str, cwd=None, clean_up_run=True):
+    def __init__(self, tb_file, *files: str, cwd=None, clean_up_run=False):
         super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
         self.tb_file = os.path.abspath(tb_file)
 
@@ -91,7 +91,7 @@ class VerilatorTester(Tester):
 
 
 class NCSimTester(Tester):
-    def __init__(self, *files: str, cwd=None, clean_up_run=True):
+    def __init__(self, *files: str, cwd=None, clean_up_run=False):
         super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
 
     def run(self, blocking=False):

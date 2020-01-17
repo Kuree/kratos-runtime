@@ -7,14 +7,15 @@ class DebuggerMock:
         self.port = port
         self.design = design
         self.regs = []
-        self._get_regs()
+        self.values = []
+        self._get_values()
         self.prefix_top = prefix_top
 
     @staticmethod
     def _get_json_header():
         return {"Content-Type'": "application/json; charset=utf-8"}
 
-    def _get_regs(self):
+    def _get_values(self):
         if self.design is not None:
             import kratos
             import _kratos
@@ -26,6 +27,7 @@ class DebuggerMock:
             else:
                 design = self.design
             self.regs = _kratos.passes.extract_register_names(design)
+            self.values = _kratos.passes.extract_var_names(design)
 
     def _post(self, sub_url, header=None, data=None):
         r = request.Request(
@@ -118,9 +120,10 @@ class DebuggerMock:
         r = self._post("clock/" + ("on" if on else "off"))
         assert r is not None, "Unable to pause on clock edge"
 
-    def get_all_reg_values(self):
+    def get_all_reg_values(self, reg_only=True):
         values = {}
-        for name in self.regs:
+        vs = self.regs if reg_only else self.values
+        for name in vs:
             value = self.get_value(name)
             if value is None:
                 raise Exception(
@@ -149,7 +152,7 @@ class DebuggerMock:
 
         return in_, out_
 
-    def record_state(self, num_wait_reset=1):
+    def record_state(self, num_wait_reset=1, reg_only=True):
         # start the simulation until it ends
         assert self.is_paused()
         self.set_pause_on_clock(True)
@@ -159,9 +162,12 @@ class DebuggerMock:
         states = []
         # start recording the state
         while self.is_paused():
-            regs = self.get_all_reg_values()
-            in_, out_ = self.get_io_values()
-            states.append((in_, regs, out_))
+            regs = self.get_all_reg_values(reg_only)
+            if reg_only:
+                in_, out_ = self.get_io_values()
+                states.append((in_, regs, out_))
+            else:
+                states.append(regs)
             self.continue_()
             self.wait_till_pause()
         self.wait_till_finish()
