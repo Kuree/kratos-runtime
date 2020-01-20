@@ -159,7 +159,7 @@ def test_fault_design_coverage():
         assert len(run_states) == 2
 
         # coverage based fault localization
-        from _kratos import FaultAnalyzer, SimulationRun
+        from _kratos.fault import FaultAnalyzer, SimulationRun
         correct_run = SimulationRun(mod.internal_generator)
         for state in run_states[0]:
             correct_run.add_simulation_state(state)
