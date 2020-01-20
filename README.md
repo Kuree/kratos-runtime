@@ -51,6 +51,13 @@ After that, you can find the library as `build/src/libkratos-runtime.so`. You
 can either copy that library to any place you like or simply  use symbolic
 link.
 
+#### A note for macOS
+Due to the restriction of macOS, all symbols have to be resolved during the linking
+time, which means all the VPI calls need to have actual symbol when linked as the
+final shared object. However, this is not doable in our case since the actual VPI
+implementation is offered by the vendor. As a result, you cannot use this project,
+even if you have Verilator working on macOS.
+
 ## How to use kratos-runtime
 The following instruction is based on Linux and tested against Verilator and
 ncsim.
