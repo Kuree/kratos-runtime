@@ -90,13 +90,20 @@ class VerilatorTester(Tester):
 
 
 class NCSimTester(Tester):
-    def __init__(self, *files: str, cwd=None, clean_up_run=False):
+    def __init__(self, *files: str, cwd=None, clean_up_run=False, collect_coverage=False):
         super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
+        self.collect_coverage=collect_coverage
 
-    def run(self, blocking=False):
+    def run(self, blocking=False, use_runtime=True):
         env = self._link_lib(self.cwd)
         # run it
         args = ["irun"] + list(self.files)
-        args += get_ncsim_flag().split()
+        if self.collect_coverage:
+            # add coverage flags
+            # we're only interested in the block coverage now
+            # maybe convert ternary into a if statement block?
+            args += ["-coverage", "b", "-covoverwrite"]
+        if use_runtime:
+            args += get_ncsim_flag().split()
         print("Running irun")
         self._run(args, self.cwd, env, blocking)
