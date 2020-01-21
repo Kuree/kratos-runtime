@@ -1,0 +1,22 @@
+steps:
+- commands:
+  - "apt update"
+  - "apt-get install -y --no-install-recommends tcl && ln -fs /usr/share/zoneinfo/America/Los_Angeles /etc/localtime && dpkg-reconfigure --frontend noninteractive tzdata"
+  - "source /cad/modules/tcl/init/sh"
+  - "module load base"
+  - "module load incisive"
+  - "cp -r /src /kratos-runtime"
+  - "python3 -m pip install /kratos-runtime pytest"
+  - "cp -r /kratos-runtime/tests /tests"
+  - "pytest /tests"
+  plugins:
+    - docker#v3.2.0:
+        image: "keyiz/kratos"
+        always-pull: true
+        volumes:
+          - "/cad/:/cad"
+        workdir: /src
+        propagate-environment: true
+        shell: ["/bin/bash", "-e", "-c"]
+  agents:
+    docker: true
