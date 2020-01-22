@@ -124,7 +124,6 @@ def test_state_dump():
 
 
 def test_fault_design_coverage():
-    from kratos import always_ff, Generator, posedge
     import kratos.passes
 
     mod = WrongDesign0()
@@ -137,11 +136,10 @@ def test_fault_design_coverage():
     input_correct = [1, 2, 2, 1]
     input_wrong = [1, 2, 3, 4]
     with tempfile.TemporaryDirectory() as temp:
-        with open(tb_file) as f:
-            correct_tb_file = os.path.join(temp, "correct.cc")
-            wrong_tb_file = os.path.join(temp, "wrong.cc")
-            template_file(tb_file, correct_tb_file, input_correct)
-            template_file(tb_file, wrong_tb_file, input_wrong)
+        correct_tb_file = os.path.join(temp, "correct.cc")
+        wrong_tb_file = os.path.join(temp, "wrong.cc")
+        template_file(tb_file, correct_tb_file, input_correct)
+        template_file(tb_file, wrong_tb_file, input_wrong)
         tb_files = [correct_tb_file, wrong_tb_file]
         run_states = []
         for tb_file in tb_files:
