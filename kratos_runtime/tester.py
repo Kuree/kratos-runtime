@@ -6,13 +6,14 @@ import shutil
 
 
 class Tester:
-    def __init__(self, *files: str, cwd=None, clean_up_run=False):
+    def __init__(self, *files: str, cwd=None, clean_up_run=False, collect_coverage=False):
         self.files = []
         for file in files:
             self.files.append(os.path.abspath(file))
         self.cwd = self._process_cwd(cwd)
         self.clean_up_run = clean_up_run
         self.__process = []
+        self.collect_coverage = collect_coverage
 
     @abstractmethod
     def run(self, blocking=False):
@@ -59,8 +60,8 @@ class Tester:
 
 
 class VerilatorTester(Tester):
-    def __init__(self, *files: str, cwd=None, clean_up_run=False):
-        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
+    def __init__(self, *files: str, cwd=None, clean_up_run=False, collect_coverage=False):
+        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run, collect_coverage=collect_coverage)
 
     def run(self, blocking=False):
         # compile it first
@@ -68,6 +69,8 @@ class VerilatorTester(Tester):
         verilator = shutil.which("verilator")
         args = [verilator, "--cc", "--exe", "--vpi", lib_name]
         args += self.files
+        if self.collect_coverage:
+            args += ["--coverage"]
         subprocess.check_call(args, cwd=self.cwd)
         # symbolic link it first
         env = self._link_lib(os.path.join(self.cwd, "obj_dir"))
@@ -91,8 +94,7 @@ class VerilatorTester(Tester):
 
 class NCSimTester(Tester):
     def __init__(self, *files: str, cwd=None, clean_up_run=False, collect_coverage=False):
-        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run)
-        self.collect_coverage=collect_coverage
+        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run, collect_coverage=collect_coverage)
 
     def run(self, blocking=False, use_runtime=True):
         env = self._link_lib(self.cwd)

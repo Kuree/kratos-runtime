@@ -379,6 +379,7 @@ std::optional<std::string> get_value(std::string handle_name) {
 
     if (!vh) {
         // not found
+        printf("%s\n", handle_name.c_str());
         return std::nullopt;
     } else {
         s_vpi_value v;

@@ -23,7 +23,7 @@ std::vector<std::string> get_tokens(const std::string &line, const std::string &
 
 std::string get_handle_name(const std::string &top, const std::string &handle_name) {
     // change the handle name
-    if (handle_name.find(top) == std::string::npos) {
+    if (!top.empty() && handle_name.find(top) == std::string::npos) {
         std::string format;
         if (top.back() == '.')
             format = "{0}{1}";
