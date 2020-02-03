@@ -3,3 +3,5 @@ INCA_libs
 *.log
 *.err
 .bpad/
+
+remote*

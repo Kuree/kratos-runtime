@@ -31,6 +31,11 @@ std::unordered_map<uint32_t, std::unordered_map<std::string, std::string>>
 std::unordered_map<std::string, vpiHandle> vpi_handle_map;
 // include the dot to make things easier
 std::string top_name_ = "TOP.";  // NOLINT
+// this is used for remote debugging
+// src_path is where the user's folder is
+// dst_path is where the code is compiled on the server
+std::string src_path;
+std::string dst_path;
 // mutex
 std::mutex runtime_lock;
 std::mutex vpi_lock;
@@ -152,8 +157,7 @@ void breakpoint_trace(uint32_t instance_id, uint32_t id) {
         }
         // pause the simulation
         // only pause when we know we can continue
-        if (http_client || use_client_request)
-            pause_sim();
+        if (http_client || use_client_request) pause_sim();
     }
 }
 
@@ -192,8 +196,7 @@ void breakpoint_clock(void) {
                               content.dump(),  // NOLINT
                               "application/json");
         }
-        if (http_client || use_client_request)
-            pause_sim();
+        if (http_client || use_client_request) pause_sim();
     }
 }
 
@@ -213,7 +216,11 @@ std::vector<std::pair<uint32_t, std::string>> get_breakpoint(const std::string &
     auto line_num = json["line_num"];
     auto expression = json["expr"];
     if (error.empty() && !filename.is_null() && !line_num.is_null()) {
-        auto const &filename_str = filename.string_value();
+        auto filename_str = filename.string_value();
+        // need to transform filename_str if src_path is not empty
+        if (!src_path.empty() && !dst_path.empty()) {
+            replace(filename_str, src_path, dst_path);
+        }
         auto line_num_int = line_num.int_value();
         // hacky way
         if (!db_) {
@@ -791,6 +798,8 @@ void initialize_runtime() {
         auto ip_json = payload["ip"];
         auto port_json = payload["port"];
         auto db_json = payload["database"];
+        auto src_path_json = payload["src_path"];
+        auto dst_path_json = payload["dst_path"];
         // this is a short cut
         if (!ip_json.is_null() && ip_json.is_string()) {
             if (ip_json.string_value() == "255.255.255.255") {
@@ -801,6 +810,14 @@ void initialize_runtime() {
                 return;
             }
         }
+
+      // this is for remote debugging path translation
+      if (!src_path_json.is_null() && !dst_path_json.is_null() && src_path_json.is_string() &&
+          dst_path_json.is_string()) {
+          src_path = src_path_json.string_value();
+          dst_path = dst_path_json.string_value();
+      }
+
         bool has_error = false;
         if (port_json.is_null() || ip_json.is_null() || db_json.is_null() ||
             !port_json.is_number() || !ip_json.is_string() || !db_json.is_string()) {
@@ -809,7 +826,11 @@ void initialize_runtime() {
         if (!has_error) {
             auto const &ip = ip_json.string_value();
             auto port = static_cast<int>(port_json.number_value());
-            auto &db_filename = db_json.string_value();
+            auto db_filename = db_json.string_value();
+            // convert db_filename to the dst one
+            if (!src_path.empty() && !dst_path.empty()) {
+                replace(db_filename, src_path, dst_path);
+            }
 
             if (!std::filesystem::exists(db_filename)) {
                 has_error = true;
@@ -826,6 +847,7 @@ void initialize_runtime() {
                 }
             }
         }
+
         if (!has_error) {
             res.status = 200;
             res.set_content("Okay", "text/plain");

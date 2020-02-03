@@ -23,4 +23,6 @@ std::string get_handle_name(const std::string &top, const std::string &handle);
 
 bool is_expr_symbol(const std::string &expr, const std::string &symbol);
 
+bool replace(std::string& str, const std::string& from, const std::string& to);
+
 #endif  // KRATOS_RUNTIME_UTIL_HH

@@ -51,3 +51,6 @@ __pycache__
 
 # cov files
 *.dat
+
+# temp files
+temp*
