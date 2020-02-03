@@ -18,7 +18,7 @@
 #include "util.hh"
 
 // constants
-constexpr uint16_t runtime_port = 8888;
+uint16_t runtime_port = 8888;
 constexpr int BUFFER_SIZE = 1024;
 
 std::unique_ptr<httplib::Server> http_server = nullptr;
@@ -811,12 +811,12 @@ void initialize_runtime() {
             }
         }
 
-      // this is for remote debugging path translation
-      if (!src_path_json.is_null() && !dst_path_json.is_null() && src_path_json.is_string() &&
-          dst_path_json.is_string()) {
-          src_path = src_path_json.string_value();
-          dst_path = dst_path_json.string_value();
-      }
+        // this is for remote debugging path translation
+        if (!src_path_json.is_null() && !dst_path_json.is_null() && src_path_json.is_string() &&
+            dst_path_json.is_string()) {
+            src_path = src_path_json.string_value();
+            dst_path = dst_path_json.string_value();
+        }
 
         bool has_error = false;
         if (port_json.is_null() || ip_json.is_null() || db_json.is_null() ||
@@ -891,7 +891,24 @@ void initialize_runtime() {
     });
 
     // start the http in a different thread
-    runtime_thread = std::thread([=]() { http_server->listen("0.0.0.0", runtime_port); });
+    // get port number from environment variable
+    auto env_port_s = std::getenv("KRATOS_PORT");
+    if (env_port_s) {
+        try {
+            auto value = std::stoi(env_port_s);
+            runtime_port = static_cast<uint16_t>(value);
+        } catch (const std::invalid_argument &) {
+            std::cerr << "Unable to set port to " << env_port_s;
+        }
+    }
+    runtime_thread = std::thread([=]() {
+        std::cout << "Kratos runtime server runs at 0.0.0.0:" << runtime_port << std::endl;
+        auto r = http_server->listen("0.0.0.0", runtime_port);
+        if (!r) {
+            std::cerr << "Unable to start server at 0.0.0.0" << runtime_port << std::endl;
+            return;
+        }
+    });
 
     // by default it's locked
     runtime_lock.lock();
