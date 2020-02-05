@@ -186,6 +186,34 @@ json11::Json::object get_graph_value() {
     return json11::Json::object({{"time", time}, {"value", values}});
 }
 
+std::string get_context_value(std::string filename, uint32_t line_num) {
+    // get all the instance ids and line number
+    if (!db_) {
+        while (!db_) {
+            // sleep for 0.1 seconds
+            usleep(100000);
+        }
+    }
+    if (db_) {
+        // replace the path if necessary
+        if (!src_path.empty() && !dst_path.empty()) {
+            replace(filename, src_path, dst_path);
+        }
+        auto bps = db_->get_breakpoints(filename, line_num);
+        if (!bps.empty()) {
+            std::vector<std::string> result;
+            result.reserve(bps.size());
+
+            for (auto const &bp : bps) {
+                auto v = get_breakpoint_value(bp.breakpoint_id, bp.instance_id);
+                result.emplace_back(v);
+            }
+            return json11::Json(result).dump();
+        }
+    }
+    return "{}";
+}
+
 void breakpoint_clock(void) {
     if (pause_clock_edge) {
         has_paused_on_clock = true;
@@ -197,6 +225,31 @@ void breakpoint_clock(void) {
                               "application/json");
         }
         if (http_client || use_client_request) pause_sim();
+    }
+}
+
+
+PLI_INT32 cb_pause_at_synth(s_cb_data*) {
+    if (http_client) {
+        http_client->Post("/status/synth", "Okay", "plain/text");
+    }
+    pause_sim();
+    return 0;
+}
+
+
+void pause_at_synth() {
+    s_cb_data cb_data_init;
+    cb_data_init.obj = nullptr;
+    cb_data_init.index = 0;
+    cb_data_init.value = nullptr;
+    cb_data_init.reason = cbNextSimTime;
+    cb_data_init.cb_rtn = &cb_pause_at_synth;
+    cb_data_init.time = nullptr;
+
+    vpiHandle res = vpi_register_cb(&cb_data_init);
+    if (!res) {
+        std::cerr << "ERROR: failed to register runtime initialization" << std::endl;
     }
 }
 
@@ -732,6 +785,7 @@ void initialize_runtime() {
         std::string value = req.matches[1];
         // set the bool to be true
         printf("pause on clock_edge %s\n", value.c_str());
+        if (value == "synth") pause_at_synth();
         pause_clock_edge = value == "on";
         res.status = 200;
         res.set_content("Okay", "text/plain");
@@ -888,6 +942,23 @@ void initialize_runtime() {
             result = "Running";
         res.status = 200;
         res.set_content(result, "text/plain");
+    });
+
+    // get context info based on filename and line number
+    http_server->Get("/context/(.*)", [](const Request &req, Response &res) {
+        auto const &body = req.body;
+        auto const fn_ln = req.matches[1];
+        auto tokens = get_tokens(fn_ln, ":");
+        std::string result;
+        if (tokens.size() == 2) {
+            auto const &filename = tokens[0];
+            auto line_num_value = static_cast<uint32_t>(std::stoi(tokens[1]));
+            result = get_context_value(filename, line_num_value);
+        } else {
+            res.status = 401;
+            result = "[]";
+        }
+        res.set_content(result, "application/json");
     });
 
     // start the http in a different thread

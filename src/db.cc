@@ -1,4 +1,5 @@
 #include "db.hh"
+
 #include "fmt/format.h"
 
 Database::Database(const std::string& filename) {
@@ -17,6 +18,24 @@ std::vector<uint32_t> Database::get_breakpoint_id(const std::string& filename, u
         for (auto const& bp : bps) {
             result.emplace_back(bp.id);
         }
+        return result;
+    } catch (...) {
+        return {};
+    }
+}
+
+std::vector<Breakpoint> Database::get_breakpoints(const std::string& filename, uint32_t line_num) {
+    using namespace sqlite_orm;
+    try {
+        auto bps = storage_->select(
+            columns(&kratos::InstanceSetEntry::instance_id, &kratos::BreakPoint::id),
+            where(is_equal(&kratos::BreakPoint::filename, filename) and is_equal(&kratos::BreakPoint::line_num, line_num) and
+            is_equal(&kratos::InstanceSetEntry::breakpoint_id, &kratos::BreakPoint::id)));
+        std::vector<Breakpoint> result;
+        for (auto const& [instance_id, breakpoint_id] : bps) {
+            result.emplace_back(Breakpoint{*instance_id, static_cast<int>(breakpoint_id)});
+        }
+
         return result;
     } catch (...) {
         return {};

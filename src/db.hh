@@ -27,11 +27,17 @@ struct Connection {
     std::string var_to;
 };
 
+struct Breakpoint {
+    int instance_id;
+    int breakpoint_id;
+};
+
 class Database {
 public:
     explicit Database(const std::string &filename);
 
     std::vector<uint32_t> get_breakpoint_id(const std::string &filename, uint32_t line_num);
+    std::vector<Breakpoint> get_breakpoints(const std::string &filename, uint32_t line_num);
     std::vector<Variable> get_variable_mapping(uint32_t instance_id, uint32_t breakpoint_id);
     std::vector<uint32_t> get_all_breakpoints(const std::string &filename);
     std::vector<std::string> get_all_files();
