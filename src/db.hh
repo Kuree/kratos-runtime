@@ -47,6 +47,7 @@ public:
     std::vector<Connection> get_connection_to(const std::string &handle_name);
     std::vector<Connection> get_connection_from(const std::string &handle_name);
     std::optional<uint32_t> get_instance_id(uint32_t breakpoint_id);
+    std::string get_instance_name(uint32_t instance_id);
 
 private:
     // see https://github.com/fnc12/sqlite_orm/wiki/FAQ

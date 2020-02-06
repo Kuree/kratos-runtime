@@ -122,19 +122,22 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
     // send over the line number and filename as well
     std::string filename;
     std::string line_num;
+    std::string instance_name;
     if (db_) {
         auto bp = db_->get_breakpoint_info(id);
         if (bp) {
             filename = bp.value().first;
             line_num = fmt::format("{0}", bp.value().second);
         }
+        instance_name = db_->get_instance_name(instance_id);
     }
     json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)},
                                                 {"self", self_vars},
                                                 {"local", local_vars},
                                                 {"generator", gen_vars},
                                                 {"filename", filename},
-                                                {"line_num", line_num}});
+                                                {"line_num", line_num},
+                                                {"instance_name", instance_name}});
     return result.dump();
 }
 
@@ -205,7 +208,7 @@ std::string get_context_value(std::string filename, uint32_t line_num) {
             result.reserve(bps.size());
 
             for (auto const &bp : bps) {
-                auto v = get_breakpoint_value(bp.breakpoint_id, bp.instance_id);
+                auto v = get_breakpoint_value(bp.instance_id, bp.breakpoint_id);
                 result.emplace_back(v);
             }
             return json11::Json(result).dump();
@@ -228,15 +231,14 @@ void breakpoint_clock(void) {
     }
 }
 
-
-PLI_INT32 cb_pause_at_synth(s_cb_data*) {
+PLI_INT32 cb_pause_at_synth(s_cb_data *) {
+    printf("paused on synth\n");
     if (http_client) {
         http_client->Post("/status/synth", "Okay", "plain/text");
     }
     pause_sim();
     return 0;
 }
-
 
 void pause_at_synth() {
     s_cb_data cb_data_init;

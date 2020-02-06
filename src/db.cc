@@ -29,8 +29,9 @@ std::vector<Breakpoint> Database::get_breakpoints(const std::string& filename, u
     try {
         auto bps = storage_->select(
             columns(&kratos::InstanceSetEntry::instance_id, &kratos::BreakPoint::id),
-            where(is_equal(&kratos::BreakPoint::filename, filename) and is_equal(&kratos::BreakPoint::line_num, line_num) and
-            is_equal(&kratos::InstanceSetEntry::breakpoint_id, &kratos::BreakPoint::id)));
+            where(is_equal(&kratos::BreakPoint::filename, filename) and
+                  is_equal(&kratos::BreakPoint::line_num, line_num) and
+                  is_equal(&kratos::InstanceSetEntry::breakpoint_id, &kratos::BreakPoint::id)));
         std::vector<Breakpoint> result;
         for (auto const& [instance_id, breakpoint_id] : bps) {
             result.emplace_back(Breakpoint{*instance_id, static_cast<int>(breakpoint_id)});
@@ -236,4 +237,18 @@ std::optional<uint32_t> Database::get_instance_id(uint32_t breakpoint_id) {
         return std::nullopt;
     }
     return std::nullopt;
+}
+
+std::string Database::get_instance_name(uint32_t instance_id) {
+    using namespace sqlite_orm;
+    try {
+        auto instances = storage_->get_all<kratos::Instance>(
+            where(is_equal(&kratos::Instance::id, instance_id)));
+        if (!instances.empty())
+            return instances[0].handle_name;
+        else
+            return "";
+    } catch (...) {
+        return "";
+    }
 }
