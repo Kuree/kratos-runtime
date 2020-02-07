@@ -137,7 +137,8 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                                                 {"generator", gen_vars},
                                                 {"filename", filename},
                                                 {"line_num", line_num},
-                                                {"instance_name", instance_name}});
+                                                {"instance_name", instance_name},
+                                                {"instance_id", std::to_string(instance_id)}});
     return result.dump();
 }
 
