@@ -232,22 +232,22 @@ void breakpoint_clock(void) {
     }
 }
 
-PLI_INT32 cb_pause_at_synth(s_cb_data *) {
-    printf("paused on synth\n");
+PLI_INT32 cb_pause_at_synch(s_cb_data *) {
+    printf("paused on synch\n");
     if (http_client) {
-        http_client->Post("/status/synth", "Okay", "plain/text");
+        http_client->Post("/status/synch", "Okay", "plain/text");
     }
     pause_sim();
     return 0;
 }
 
-void pause_at_synth() {
+void pause_at_synch() {
     s_cb_data cb_data_init;
     cb_data_init.obj = nullptr;
     cb_data_init.index = 0;
     cb_data_init.value = nullptr;
     cb_data_init.reason = cbNextSimTime;
-    cb_data_init.cb_rtn = &cb_pause_at_synth;
+    cb_data_init.cb_rtn = &cb_pause_at_synch;
     cb_data_init.time = nullptr;
 
     vpiHandle res = vpi_register_cb(&cb_data_init);
@@ -788,7 +788,7 @@ void initialize_runtime() {
         std::string value = req.matches[1];
         // set the bool to be true
         printf("pause on clock_edge %s\n", value.c_str());
-        if (value == "synth") pause_at_synth();
+        if (value == "synch") pause_at_synch();
         pause_clock_edge = value == "on";
         res.status = 200;
         res.set_content("Okay", "text/plain");
