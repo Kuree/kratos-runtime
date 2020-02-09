@@ -94,7 +94,18 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                 else
                     v = "ERROR";
                 if (variable.name.empty()) {
-                    gen_vars.emplace_back(std::make_pair(variable.value, v));
+                    // this is a generator variables
+                    std::string var_name;
+                    var_name.reserve(variable.value.size());
+                    for (auto const c: variable.value) {
+                        if (c == '[')
+                            var_name += '.';
+                        else if (c != ']')
+                            var_name += c;
+                    }
+                    //
+                    // we need some process here to replace the [] in array notion, if any
+                    gen_vars.emplace_back(std::make_pair(var_name, v));
                 } else {
                     self_vars.emplace_back(std::make_pair(variable.name, v));
                 }
