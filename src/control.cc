@@ -60,7 +60,6 @@ bool evaluate_breakpoint_expr(uint32_t breakpoint_id);
 //
 std::string process_var_front_name(const Variable &variable);
 
-
 struct CbHandle {
     s_vpi_time time;
     s_vpi_value value;
@@ -153,13 +152,13 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
 std::string process_var_front_name(const Variable &variable) {
     std::string var_name;
     var_name.reserve(variable.value.size());
-    for (auto const c: variable.value) {
+    for (auto const c : variable.value) {
         if (c == '[')
             var_name += '.';
         else if (c != ']')
             var_name += c;
     }
-                    return var_name;
+    return var_name;
 }
 
 void breakpoint_trace(uint32_t instance_id, uint32_t id) {
@@ -318,6 +317,9 @@ std::vector<std::pair<uint32_t, std::string>> get_breakpoint(const std::string &
                     result.emplace_back(std::make_pair(bp, expr_str));
                 }
                 return result;
+            } else {
+                std::cerr << "Unable to find breakpoint at " << filename_str << ":" << line_num_int
+                          << std::endl;
             }
         }
     }
