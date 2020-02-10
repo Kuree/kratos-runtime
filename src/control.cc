@@ -136,6 +136,11 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
         if (bp) {
             filename = bp.value().first;
             line_num = fmt::format("{0}", bp.value().second);
+            // convert them if necessary
+            // replace the path if necessary
+            if (!src_path.empty() && !dst_path.empty()) {
+                replace(filename, src_path, dst_path);
+            }
         }
         instance_name = db_->get_instance_name(instance_id);
     }

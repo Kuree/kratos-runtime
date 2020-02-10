@@ -57,6 +57,11 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
     size_t start_pos = str.find(from);
     if(start_pos == std::string::npos)
         return false;
-    str.replace(start_pos, from.length() - 1, to);
+    auto to_path = to;
+    if (to_path.back() == '/' && str[start_pos + from.length()] == '/') {
+        // fs doesn't like double //
+        to_path = to_path.substr(0, to_path.size() - 1);
+    }
+    str.replace(start_pos, from.length(), to_path);
     return true;
 }
