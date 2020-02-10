@@ -57,8 +57,8 @@ std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
 bool evaluate_breakpoint_expr(uint32_t breakpoint_id);
 
-//
-std::string process_var_front_name(const Variable &variable);
+// convert the [] name to . for arrays
+std::string process_var_front_name(const std::string &name);
 
 struct CbHandle {
     s_vpi_time time;
@@ -96,13 +96,14 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                     v = value.value();
                 else
                     v = "ERROR";
-                auto var_name = process_var_front_name(variable);
                 if (variable.name.empty()) {
                     // this is a generator variables
                     //
                     // we need some process here to replace the [] in array notion, if any
+                    auto var_name = process_var_front_name(variable.value);
                     gen_vars.emplace_back(std::make_pair(var_name, v));
                 } else {
+                    auto var_name = process_var_front_name(variable.name);
                     self_vars.emplace_back(std::make_pair(var_name, v));
                 }
             } else {
@@ -119,7 +120,7 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                     v = value.value();
                 else
                     v = "ERROR";
-                auto var_name = process_var_front_name(variable);
+                auto var_name = process_var_front_name(variable.value);
                 local_vars.emplace_back(std::make_pair(var_name, v));
             } else {
                 local_vars.emplace_back(std::make_pair(variable.name, variable.value));
@@ -139,7 +140,7 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
             // convert them if necessary
             // replace the path if necessary
             if (!src_path.empty() && !dst_path.empty()) {
-                replace(filename, src_path, dst_path);
+                replace(filename, dst_path, src_path);
             }
         }
         instance_name = db_->get_instance_name(instance_id);
@@ -154,10 +155,10 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                                                 {"instance_id", std::to_string(instance_id)}});
     return result.dump();
 }
-std::string process_var_front_name(const Variable &variable) {
+std::string process_var_front_name(const std::string &name) {
     std::string var_name;
-    var_name.reserve(variable.value.size());
-    for (auto const c : variable.value) {
+    var_name.reserve(name.size());
+    for (auto const c : name) {
         if (c == '[')
             var_name += '.';
         else if (c != ']')
@@ -428,12 +429,14 @@ bool evaluate_breakpoint_expr(uint32_t breakpoint_id) {
     return evaluate(breakpoint_id, values);
 }
 
-std::vector<uint32_t> get_breakpoint_filename(const std::string &filename, httplib::Response &res) {
+std::vector<uint32_t> get_breakpoint_filename(std::string filename, httplib::Response &res) {
     if (!filename.empty()) {
         if (db_) {
             res.status = 200;
             // return a list of breakpoints
             res.set_content("Okay", "text/plain");
+            if (!src_path.empty() && !dst_path.empty())
+                replace(filename, src_path, dst_path);
             auto bps = db_->get_all_breakpoints(filename);
             struct BP {
                 uint32_t id;

@@ -61,6 +61,8 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
     if (to_path.back() == '/' && str[start_pos + from.length()] == '/') {
         // fs doesn't like double //
         to_path = to_path.substr(0, to_path.size() - 1);
+    } else if (to_path.back() != '/' && from.back() == '/') {
+        to_path = to_path.append("/");
     }
     str.replace(start_pos, from.length(), to_path);
     return true;
