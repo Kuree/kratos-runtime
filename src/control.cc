@@ -57,6 +57,10 @@ std::optional<std::string> get_value(std::string handle_name);
 std::optional<std::string> get_simulation_time(const std::string &);
 bool evaluate_breakpoint_expr(uint32_t breakpoint_id);
 
+//
+std::string process_var_front_name(const Variable &variable);
+
+
 struct CbHandle {
     s_vpi_time time;
     s_vpi_value value;
@@ -93,21 +97,14 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                     v = value.value();
                 else
                     v = "ERROR";
+                auto var_name = process_var_front_name(variable);
                 if (variable.name.empty()) {
                     // this is a generator variables
-                    std::string var_name;
-                    var_name.reserve(variable.value.size());
-                    for (auto const c: variable.value) {
-                        if (c == '[')
-                            var_name += '.';
-                        else if (c != ']')
-                            var_name += c;
-                    }
                     //
                     // we need some process here to replace the [] in array notion, if any
                     gen_vars.emplace_back(std::make_pair(var_name, v));
                 } else {
-                    self_vars.emplace_back(std::make_pair(variable.name, v));
+                    self_vars.emplace_back(std::make_pair(var_name, v));
                 }
             } else {
                 self_vars.emplace_back(variable.name, variable.value);
@@ -123,7 +120,8 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                     v = value.value();
                 else
                     v = "ERROR";
-                local_vars.emplace_back(std::make_pair(variable.name, v));
+                auto var_name = process_var_front_name(variable);
+                local_vars.emplace_back(std::make_pair(var_name, v));
             } else {
                 local_vars.emplace_back(std::make_pair(variable.name, variable.value));
             }
@@ -151,6 +149,17 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                                                 {"instance_name", instance_name},
                                                 {"instance_id", std::to_string(instance_id)}});
     return result.dump();
+}
+std::string process_var_front_name(const Variable &variable) {
+    std::string var_name;
+    var_name.reserve(variable.value.size());
+    for (auto const c: variable.value) {
+        if (c == '[')
+            var_name += '.';
+        else if (c != ']')
+            var_name += c;
+    }
+                    return var_name;
 }
 
 void breakpoint_trace(uint32_t instance_id, uint32_t id) {
