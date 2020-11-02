@@ -3,6 +3,8 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <cinttypes>
+#include <string>
 
 bool evaluate(uint32_t breakpoint_id, const std::unordered_map<std::string, int64_t> &values);
 void add_expr(uint32_t breakpoint_id, const std::string &expr,
