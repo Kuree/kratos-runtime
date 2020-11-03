@@ -169,7 +169,7 @@ std::string process_var_front_name(const std::string &name) {
 
 void breakpoint_trace(uint32_t instance_id, uint32_t id) {
     if (step_over || !should_continue_simulation(id)) {
-        printf("hit breakpoint %d\n", id);
+        printf("hit breakpoint %d step_over: %d\n", id, step_over);
         // if we have a conditional breakpoint
         // we need to check that
         if (has_expr_breakpoint(id)) {
@@ -1009,7 +1009,7 @@ void initialize_runtime() {
         std::cout << "Kratos runtime server runs at 0.0.0.0:" << runtime_port << std::endl;
         auto r = http_server->listen("0.0.0.0", runtime_port);
         if (!r) {
-            std::cerr << "Unable to start server at 0.0.0.0" << runtime_port << std::endl;
+            std::cerr << "Unable to start server at 0.0.0.0:" << runtime_port << std::endl;
             return;
         }
     });

@@ -92,14 +92,16 @@ class VerilatorTester(Tester):
         self._run([name], self.cwd, env, blocking)
 
 
-class NCSimTester(Tester):
+class CadenceTester(Tester):
     def __init__(self, *files: str, cwd=None, clean_up_run=False, collect_coverage=False):
         super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run, collect_coverage=collect_coverage)
+        self.toolchain = ""
 
     def run(self, blocking=False, use_runtime=True):
+        assert len(self.toolchain) > 0
         env = self._link_lib(self.cwd)
         # run it
-        args = ["irun"] + list(self.files)
+        args = [self.toolchain] + list(self.files)
         if self.collect_coverage:
             # add coverage flags
             # we're only interested in the block coverage now
@@ -107,5 +109,17 @@ class NCSimTester(Tester):
             args += ["-coverage", "b", "-covoverwrite"]
         if use_runtime:
             args += get_ncsim_flag().split()
-        print("Running irun")
+        print("Running", self.toolchain)
         self._run(args, self.cwd, env, blocking)
+
+
+class NCSimTester(CadenceTester):
+    def __init__(self, *files: str, cwd=None, clean_up_run=False, collect_coverage=False):
+        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run, collect_coverage=collect_coverage)
+        self.toolchain = "irun"
+
+
+class XceliumTester(CadenceTester):
+    def __init__(self, *files: str, cwd=None, clean_up_run=False, collect_coverage=False):
+        super().__init__(*files, cwd=cwd, clean_up_run=clean_up_run, collect_coverage=collect_coverage)
+        self.toolchain = "xrun"
