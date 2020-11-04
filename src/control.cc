@@ -110,7 +110,7 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                 self_vars.emplace_back(variable.name, variable.value);
             }
         }
-        auto context_vars = db_->get_context_variable(id);
+        auto context_vars = db_->get_context_variable(instance_id, id);
         for (auto const &variable : context_vars) {
             if (variable.is_var) {
                 auto handle_name = fmt::format("{0}.{1}", variable.handle, variable.value);
@@ -344,7 +344,7 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     auto op_id = db_->get_instance_id(breakpoint_id);
     if (!op_id) return false;
     auto const self_variables = db_->get_variable_mapping(*op_id, breakpoint_id);
-    auto const context_variables = db_->get_context_variable(breakpoint_id);
+    auto const context_variables = db_->get_context_variable(*op_id, breakpoint_id);
     std::unordered_map<std::string, int64_t> constants;
     std::unordered_set<std::string> symbols;
     // need to extract the time

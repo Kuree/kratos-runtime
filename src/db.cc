@@ -110,7 +110,7 @@ std::optional<std::pair<std::string, uint32_t>> Database::get_breakpoint_info(ui
     return std::nullopt;
 }
 
-std::vector<Variable> Database::get_context_variable(uint32_t id) {
+std::vector<Variable> Database::get_context_variable(uint32_t instance_id, uint32_t id) {
     using namespace sqlite_orm;
     try {
         std::vector<Variable> result;
@@ -119,7 +119,8 @@ std::vector<Variable> Database::get_context_variable(uint32_t id) {
                     &kratos::Variable::is_var, &kratos::Instance::handle_name),
             where(c(&kratos::ContextVariable::breakpoint_id) == id and
                   c(&kratos::ContextVariable::variable_id) == &kratos::Variable::id and
-                  c(&kratos::Instance::id) == &kratos::Variable::handle));
+                  c(&kratos::Instance::id) == &kratos::Variable::handle and
+                  c(&kratos::Instance::id) == instance_id));
         for (auto const& v : values) {
             auto const& [name, value, is_var, handle_name] = v;
             Variable var{name, value, handle_name, true, is_var};
