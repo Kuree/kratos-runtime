@@ -814,6 +814,13 @@ void initialize_runtime() {
         res.set_content("Okay", "text/plain");
     });
 
+    http_server->Post("/top_name", [](const Request &req, Response &res) {
+        std::string value = req.body;
+        top_name_ = value + ".";
+        res.status = 200;
+        res.set_content("Okay", "text/plain");
+    });
+
     http_server->Post(R"(/clock/(\w+))", [](const Request &req, Response &res) {
         std::string value = req.matches[1];
         // set the bool to be true
