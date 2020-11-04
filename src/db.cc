@@ -77,14 +77,13 @@ std::vector<Variable> Database::get_variable_mapping(uint32_t instance_id, uint3
         // SELECT variable.name, variable.value, variable.is_var, instance.handle_name
         //     FROM variable, instance, breakpoint WHERE
         //     breakpoint.id = breakpoint_id AND breakpoint.handle = instance.id AND
-        //     variable.handle = instance.id and variable.is_context = false
+        //     variable.handle = instance.id
         auto values = storage_->select(
             columns(&kratos::Variable::name, &kratos::Variable::value, &kratos::Variable::is_var,
                     &kratos::Instance::handle_name, &kratos::BreakPoint::id),
             where(is_equal(&kratos::BreakPoint::id, breakpoint_id) and
                   is_equal(instance_id, &kratos::Variable::handle) and
-                  is_equal(&kratos::Instance::id, instance_id) and
-                  is_equal(&kratos::Variable::is_context, false)));
+                  is_equal(&kratos::Instance::id, instance_id)));
         for (auto const& v : values) {
             auto const& [name, value, is_var, handle_name, a] = v;
             (void)(a);
