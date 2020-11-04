@@ -1,6 +1,6 @@
 Kratos-Runtime Debug Database
 =============================
-This documentation describes the full design details of the kratos-runtime as
+This documentation describes the full design details of the `kratos-runtime` as
 well as the capability of reference debugger implemented in Visual Studio Code.
 
 ## Database Format
@@ -10,7 +10,7 @@ on a running service. There are hundreds of language drivers and visualization
 frameworks to help users understand the database content.
 
 ### Database schema
-![Database graph](graph.svg)
+![Database schema diagram](schema.svg)
 
 Below is the raw SQL query that can be used to create each table
 - `instance`
@@ -35,11 +35,15 @@ Below is the raw SQL query that can be used to create each table
     ```
 - `breakpoint`
     ```SQL
-    CREATE TABLE IF NOT EXISTS 'breakpoint' ( 'id' INTEGER PRIMARY KEY NOT NULL , 'filename' TEXT NOT NULL , 'line_num' INTEGER NOT NULL , 'handle' INTEGER , FOREIGN KEY( handle ) REFERENCES instance ( id ) );
+    CREATE TABLE IF NOT EXISTS 'breakpoint' ( 'id' INTEGER PRIMARY KEY NOT NULL , 'filename' TEXT NOT NULL , 'line_num' INTEGER NOT NULL );
     ```
 - `metadata`
     ```SQL
     CREATE TABLE IF NOT EXISTS 'metadata' ( 'name' TEXT NOT NULL , 'value' TEXT NOT NULL );
+    ```
+- `instance_set`
+    ```SQL
+    CREATE TABLE IF NOT EXISTS 'instance_set' ( 'instance_id' INTEGER , 'breakpoint_id' INTEGER , FOREIGN KEY( instance_id ) REFERENCES instance ( id ) , FOREIGN KEY( breakpoint_id ) REFERENCES breakpoint ( id ) );
     ```
 
 ### Database Description
