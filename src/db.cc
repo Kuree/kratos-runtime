@@ -121,7 +121,8 @@ std::vector<Variable> Database::get_context_variable(uint32_t instance_id, uint3
                     &kratos::Variable::is_var, &kratos::Instance::handle_name),
             where(c(&kratos::ContextVariable::breakpoint_id) == id and
                   c(&kratos::ContextVariable::variable_id) == &kratos::Variable::id and
-                  c(&kratos::Instance::id) == &kratos::Variable::handle));
+                  c(&kratos::Instance::id) == &kratos::Variable::handle and
+                  c(&kratos::Instance::id) == instance_id));
         for (auto const& v : values) {
             auto const& [name, value, is_var, handle_name] = v;
             Variable var{name, value, handle_name, true, is_var};
