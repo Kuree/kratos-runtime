@@ -54,9 +54,9 @@ link.
 #### A note for macOS
 Due to the restriction of macOS, all symbols have to be resolved during the linking
 time, which means all the VPI calls need to have actual symbol when linked as the
-final shared object. However, this is not doable in our case since the actual VPI
-implementation is offered by the vendor. As a result, you cannot use this project,
-even if you have Verilator working on macOS.
+final shared object. However, this might not be doable in our case since the actual VPI
+implementation is offered by the vendor. Due to limited access to macOS machines, I
+am not able to resolve this issue. Feel free to send a PR if there is a fix for that.
 
 ## How to use kratos-runtime
 The following instruction is based on Linux and tested against Verilator and
