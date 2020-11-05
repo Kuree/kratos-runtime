@@ -74,16 +74,18 @@ std::vector<Variable> Database::get_variable_mapping(uint32_t instance_id, uint3
     using namespace sqlite_orm;
     try {
         std::vector<Variable> result;
-        // SELECT variable.name, variable.value, variable.is_var, instance.handle_name
-        //     FROM variable, instance, breakpoint WHERE
+        // SELECT generator_variable.name, variable.value, variable.is_var, instance.handle_name
+        //     FROM variable, instance, breakpoint, generator_variable.name WHERE
         //     breakpoint.id = breakpoint_id AND breakpoint.handle = instance.id AND
-        //     variable.handle = instance.id
+        //     variable.handle = instance.id AND
+        //     generator_variable.variable_id = variable.id
         auto values = storage_->select(
-            columns(&kratos::Variable::name, &kratos::Variable::value, &kratos::Variable::is_var,
+            columns(&kratos::GeneratorVariable::name, &kratos::Variable::value, &kratos::Variable::is_var,
                     &kratos::Instance::handle_name, &kratos::BreakPoint::id),
             where(is_equal(&kratos::BreakPoint::id, breakpoint_id) and
                   is_equal(instance_id, &kratos::Variable::handle) and
-                  is_equal(&kratos::Instance::id, instance_id)));
+                  is_equal(&kratos::Instance::id, instance_id) and
+                  is_equal(&kratos::GeneratorVariable::variable_id, &kratos::Variable::id)));
         for (auto const& v : values) {
             auto const& [name, value, is_var, handle_name, a] = v;
             (void)(a);
@@ -119,8 +121,7 @@ std::vector<Variable> Database::get_context_variable(uint32_t instance_id, uint3
                     &kratos::Variable::is_var, &kratos::Instance::handle_name),
             where(c(&kratos::ContextVariable::breakpoint_id) == id and
                   c(&kratos::ContextVariable::variable_id) == &kratos::Variable::id and
-                  c(&kratos::Instance::id) == &kratos::Variable::handle and
-                  c(&kratos::Instance::id) == instance_id));
+                  c(&kratos::Instance::id) == &kratos::Variable::handle));
         for (auto const& v : values) {
             auto const& [name, value, is_var, handle_name] = v;
             Variable var{name, value, handle_name, true, is_var};

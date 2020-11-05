@@ -82,7 +82,6 @@ void un_pause_sim() {
 std::unordered_map<std::string, CbHandle *> cb_handle_map;
 
 std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
-    std::vector<std::pair<std::string, std::string>> self_vars;
     std::vector<std::pair<std::string, std::string>> gen_vars;
     std::vector<std::pair<std::string, std::string>> local_vars;
     if (db_) {
@@ -96,18 +95,11 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                     v = value.value();
                 else
                     v = "ERROR";
-                if (variable.name.empty()) {
-                    // this is a generator variables
-                    //
-                    // we need some process here to replace the [] in array notion, if any
-                    auto var_name = process_var_front_name(variable.value);
-                    gen_vars.emplace_back(std::make_pair(var_name, v));
-                } else {
-                    auto var_name = process_var_front_name(variable.name);
-                    self_vars.emplace_back(std::make_pair(var_name, v));
-                }
+                // we need some process here to replace the [] in array notion, if any
+                auto var_name = process_var_front_name(variable.value);
+                gen_vars.emplace_back(std::make_pair(var_name, v));
             } else {
-                self_vars.emplace_back(variable.name, variable.value);
+                gen_vars.emplace_back(variable.name, variable.value);
             }
         }
         auto context_vars = db_->get_context_variable(instance_id, id);
@@ -120,8 +112,7 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
                     v = value.value();
                 else
                     v = "ERROR";
-                auto var_name = process_var_front_name(variable.value);
-                local_vars.emplace_back(std::make_pair(var_name, v));
+                local_vars.emplace_back(std::make_pair(variable.name, v));
             } else {
                 local_vars.emplace_back(std::make_pair(variable.name, variable.value));
             }
@@ -146,7 +137,6 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
         instance_name = db_->get_instance_name(instance_id);
     }
     json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)},
-                                                {"self", self_vars},
                                                 {"local", local_vars},
                                                 {"generator", gen_vars},
                                                 {"filename", filename},
