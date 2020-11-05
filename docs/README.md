@@ -92,9 +92,11 @@ Here are some terms used in this documentation
 
 - `value`
 
-    If the variable is has correspondence to RTL signal, the value is the signal name scoped to the instance. As a result, we don't need full path When querying values, we will prefix it with the linked instance `handle_name` and construct full path handle name for the variable.
+    If the variable is has correspondence to RTL signal i.e. `is_verilog_var` set to 0,
+    the value is the signal name scoped to the instance.
+    As a result, we don't need full path when querying values, we will prefix it with the linked instance `handle_name` and construct full path handle name for the variable.
 
-    If the variable is not a RTL signal i.e. `is_verilog_var` is set to 0, then the value would be the string value of the variable.
+    If the variable is not a RTL signal i.e. `is_verilog_var` set to 0, then the value would be the string value of the variable.
 
 
 #### `breakpoint` Table
@@ -113,7 +115,7 @@ Here are some terms used in this documentation
 
 - `id` for `instance`
 
-    Each instance of the design should have a unique ID. See DPI section for more details on how it is used.
+    Each instance of the design should have a unique ID. See [breakpoint section](#breakpoint-insertion) for more details on how it is used.
 
 - `handle_name`
 
@@ -127,7 +129,7 @@ Here are some terms used in this documentation
 
 - `breakpoint_id`
 
-    Foreign key linked to `breakpoint` `id`. Whenever a breakpoint is hit, the runtime will select all context rows that share the same `breakpoint_id` and then construct the context frame.
+    Foreign key linked to `breakpoint` `id`. Whenever a breakpoint is hit, the runtime will select all context rows that share the same `breakpoint_id` and and then construct the context frame (`instance_id` is also used as during multi-table select).
 
 - `name`
 
@@ -138,7 +140,7 @@ Here are some terms used in this documentation
 
 - `variable_id`
 
-    Foreign key linked to `variable` `id`. The same variable can be linked by multiple `context` table entries for storage optimization. However, compilers are free to duplicate variables 
+    Foreign key linked to `variable` `id`. The same variable can be linked by multiple `generator_variable` table entries for storage optimization. However, compilers are free to duplicate variables 
 
 - `handle`
 
@@ -181,7 +183,7 @@ variable in the following format
 
 We can use `obj.value1` as `name` when storing data in `context` and `generator_variable` table.
 
-The same rule applies to the verilog value. If you have an array that mapped
+The same rule applies to the array value. If you have an array that mapped
 to an array in verilog:
 
 ```
@@ -203,18 +205,20 @@ in the debugger.
 ## Breakpoint Insertion
 The breakpoint is implemented as a `DPI` function. In cases where your hardware
 construction language can only generate Verilog-95 or Verilog-01, you have
-to somehow manage to generate the following SystemVerilog syntax:
+to somehow manage to generate the following SystemVerilog DPI import at the beginning of your RTL file:
+
 ```SystemVerilog
 import "DPI-C" function void breakpoint_trace(input int instance_id, input int stmt_id);
 ```
-You should put the `breakpoint_trace(instance_id, id)` call above any statement that has a corresponding line to the original source code.
-- `instance_id` is a unique identifier for each instance in the design you want to debug. So if two instances share the same module definition, they still have two different IDs and thus the function arguments will be different. To avoid uniquification, we recommend to implement `instance_id` as a module parameter, as shown in the example.
-- `id` is the breakpoint id. It establish the mapping between the source code line and the simulation environment.
 
-You can only put breakpoint statement in the `always` block due to the limitation of DPI function calls. As a result, you have to wrap every continuous assignment into an `always_comb` block.
+You should put the `breakpoint_trace(instance_id, id)` call above any statement that has a corresponding line to the original source code.
+- `instance_id` is a unique identifier for each instance in the design you want to debug. So if two instances share the same module definition, they still have two different IDs and thus the function arguments will be different. To avoid uniquification, we recommend to implement `instance_id` as a module parameter, as shown in the [example](#examples).
+- `id` is the breakpoint id. It establishes the mapping between the source code line and the simulation environment.
+
+You can only put breakpoint statement in the process block due to the limitation of DPI function calls. As a result, you have to wrap every continuous assignment into an `always_comb` block. To match the same simulation semantics as continuous assignment, each `always_comb` should only have one assign statement.
 
 ## Examples
-In this section we will use a simple example in Python to illustrate how to generate the database. Although the example is written in `kratos`, the should be transferrable to all hardware generator frameworks.
+In this section we will use a simple example in Python to illustrate how to generate the database. Although the example is written in `kratos`, the format should be transferrable to all hardware generator frameworks.
 
 ```Python
 class ExampleGenerator(Generator):
@@ -222,6 +226,8 @@ class ExampleGenerator(Generator):
         super().__init__("ExampleGenerator")
         self.a = self.input("a", width)
         self.b = self.output("b", width)
+        # the following statement doesn't produce a context variable,
+        # but a generator variable
         self.input("c", width)
 
         @always_comb
