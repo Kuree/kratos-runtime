@@ -619,7 +619,6 @@ void initialize_runtime() {
             for (auto const &bp : bps) {
                 add_break_point(bp.first);
                 add_breakpoint_expr(bp.first, bp.second);
-                printf("Breakpoint inserted to %d\n", bp.first);
             }
         }
         vpi_lock.unlock();
@@ -663,12 +662,11 @@ void initialize_runtime() {
     });
 
     // delete all breakpoint from a file
-    http_server->Delete(R"(/breakpoint/file/([\w./:\\]+))", [](const Request &req, Response &res) {
+    http_server->Delete(R"(/breakpoint/file/(.*))", [](const Request &req, Response &res) {
         auto filename = req.matches[1];
         vpi_lock.lock();
         auto bps = get_breakpoint_filename(filename, res);
         for (auto const &bp : bps) {
-            printf("Bulk: Breakpoint removed from %d\n", bp);
             remove_break_point(bp);
             remove_expr(bp);
         }
