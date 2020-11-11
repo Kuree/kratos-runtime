@@ -40,7 +40,7 @@ Below is the raw SQL query that can be used to create each table
     ```
 - `breakpoint`
     ```SQL
-    CREATE TABLE IF NOT EXISTS 'breakpoint' ( 'id' INTEGER PRIMARY KEY NOT NULL , 'filename' TEXT NOT NULL , 'line_num' INTEGER NOT NULL );
+    CREATE TABLE IF NOT EXISTS 'breakpoint' ( 'id' INTEGER PRIMARY KEY NOT NULL , 'filename' TEXT NOT NULL , 'line_num' INTEGER NOT NULL , 'column_num' INTEGER NOT NULL );
     ```
 - `metadata`
     ```SQL
@@ -104,11 +104,13 @@ Here are some terms used in this documentation
 
     Each breakpoint should have a unique ID. Notice that many instances may share the same definition. To allow break on each instance, instance id is also used to as an identifier.
 
-- `filename` and `line_num`
+- `filename`, `line_num`, and `column_num`
 
     The `filename` in breakpoint is the *absolute path* to ensure the
-    support for remote debugging. `line_num` starts from `1`, as commonly used in text
-    editors. The runtime library supports source files remapping, which can be configured through a REST API.
+    support for remote debugging. `line_num` starts from 1, as commonly used in text
+    editors. `column_num` also starts fromm 1. You can set `column_num` to 0 if not used.
+    
+    The runtime library supports source files remapping, which can be configured through a REST API.
 
 
 #### `instance` Table
@@ -285,11 +287,11 @@ Since there is only one instance, i.e. `ExampleGenerator`, we only have one row 
 Similarly, since there is only one breakpoint, we also have one rwo in the `breakpoint` table:
 
 
-| id | filename        | line_num |
-| -- | --------------- | -------- |
-| 0  | /tmp/example.py | 13       |
+| id | filename        | line_num | column_num |
+| -- | --------------- | -------- | ---------- |
+| 0  | /tmp/example.py | 13       | 0          |
 
-Notice that the line number exactly match line `self.b = self.a & self.ports.c` in Python code.
+Notice that the line number exactly match line `self.b = self.a & self.ports.c` in Python code. We set the `column_num` to 0 since it is not used.
 
 
 Since we have 3 RTL signals, we have the following rows in table `generator_variable`:
