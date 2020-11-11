@@ -399,6 +399,7 @@ bool add_breakpoint_expr(uint32_t breakpoint_id, const std::string &expr) {
     // add expression to the table
     try {
         add_expr(breakpoint_id, expr, symbols, constants);
+        printf("Adding expr (%s) to breakpoint %d\n", expr.c_str(), breakpoint_id);
         return true;
     } catch (...) {
         return false;
