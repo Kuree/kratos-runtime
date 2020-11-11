@@ -279,51 +279,55 @@ void exception(uint32_t instance_id, uint32_t id) {
     }
 }
 
-std::vector<std::pair<uint32_t, std::string>> get_breakpoint(const std::string &body,
-                                                             httplib::Response &res) {
-    std::string error;
-    auto json = json11::Json::parse(body, error);
-    auto filename = json["filename"];
-    auto line_num = json["line_num"];
-    auto expression = json["expr"];
-    if (error.empty() && !filename.is_null() && !line_num.is_null()) {
-        auto filename_str = filename.string_value();
-        // need to transform filename_str if src_path is not empty
-        if (!src_path.empty() && !dst_path.empty()) {
-            replace(filename_str, src_path, dst_path);
+std::string get_breakpoint_content(
+    const std::vector<std::pair<uint32_t, uint32_t>> &bps) {
+    struct BPInfo {
+        uint32_t id;
+        uint32_t col;
+        [[nodiscard]] json11::Json to_json() const {
+            return json11::Json::object{{{"id", (int)id}, {"col", (int)col}}};
         }
-        auto line_num_int = line_num.int_value();
-        // hacky way
-        if (!db_) {
-            while (!db_) {
-                // sleep for 0.1 seconds
-                usleep(100000);
-            }
-        }
-        if (db_) {
-            auto bps = db_->get_breakpoint_id(filename_str, line_num_int);
-            if (!bps.empty()) {
-                res.status = 200;
-                res.set_content("Okay", "text/plain");
-                std::vector<std::pair<uint32_t, std::string>> result;
-                result.reserve(bps.size());
-                std::string expr_str;
-                if (!expression.is_null()) expr_str = expression.string_value();
-                for (auto const &bp : bps) {
-                    result.emplace_back(std::make_pair(bp, expr_str));
-                }
-                return result;
-            } else {
-                std::cerr << "Unable to find breakpoint at " << filename_str << ":" << line_num_int
-                          << std::endl;
-            }
+    };
+    std::vector<BPInfo> info_list;
+    info_list.reserve(bps.size());
+    for (auto const &[bp, col] : bps) {
+        info_list.emplace_back(BPInfo{.id = bp, .col = col});
+    }
+    auto content = json11::Json(info_list).dump();
+    return content;
+}
+
+void set_breakpoint_content(const std::vector<std::pair<uint32_t, uint32_t>> &bps,
+                            httplib::Response &res) {
+    res.status = 200;
+    auto const content = get_breakpoint_content(bps);
+    res.set_content(content, "application/json");
+}
+
+std::vector<std::pair<uint32_t, uint32_t>> get_breakpoint(const std::string &filename,
+                                                                        uint32_t line_num) {
+    // hacky way
+    if (!db_) {
+        while (!db_) {
+            // sleep for 0.1 seconds
+            usleep(100000);
         }
     }
-    if (error.empty()) {
-        error = "ERROR";
+    if (db_) {
+        auto bps = db_->get_breakpoint_id(filename, line_num);
+        if (!bps.empty()) {
+            std::vector<std::pair<uint32_t, uint32_t>> result;
+            result.reserve(bps.size());
+            for (auto const &bp : bps) {
+                auto col = db_->get_breakpoint_column(bp);
+                result.emplace_back(std::make_pair(bp, col));
+            }
+            return result;
+        } else {
+            std::cerr << "Unable to find breakpoint at " << filename << ":" << line_num
+                      << std::endl;
+        }
     }
-    res.status = 401;
-    res.set_content(error, "text/plain");
     return {};
 }
 
@@ -425,8 +429,7 @@ std::vector<uint32_t> get_breakpoint_filename(std::string filename, httplib::Res
             res.status = 200;
             // return a list of breakpoints
             res.set_content("Okay", "text/plain");
-            if (!src_path.empty() && !dst_path.empty())
-                replace(filename, src_path, dst_path);
+            if (!src_path.empty() && !dst_path.empty()) replace(filename, src_path, dst_path);
             auto bps = db_->get_all_breakpoints(filename);
             struct BP {
                 uint32_t id;
@@ -601,42 +604,108 @@ std::string get_connection_str(const std::string &handle_name, bool is_from) {
     return content;
 }
 
+std::optional<std::pair<std::string, uint32_t>> get_fn_ln(const std::string &path) {
+    std::string filename;
+    uint32_t line_num = 0xFFFFFFFF;
+    auto tokens = get_tokens(path, ":");
+    if (tokens.size() == 2) {
+        auto line_num_str = tokens.back();
+        if (is_digits(line_num_str)) {
+            line_num = std::stoul(line_num_str);
+            filename = tokens[0];
+        }
+    } else if (tokens.size() > 2) {
+        auto col_str = tokens[tokens.size() - 1];
+        auto line_num_str = tokens[tokens.size() - 2];
+        if (is_digits(col_str) && is_digits(line_num_str)) {
+            // TODO:
+            // add column str
+            filename = join(tokens.begin(), tokens.begin() + (tokens.size() - 2), ":");
+            line_num = std::stoul(line_num_str);
+        }
+    }
+
+    if (filename.empty() || line_num == 0xFFFFFFFF)
+        return std::nullopt;
+    else
+        return std::make_pair(filename, line_num);
+}
+
+std::optional<std::pair<uint32_t, std::string>> parse_bp_json(const std::string &content) {
+    std::string error;
+    auto json = json11::Json::parse(content, error);
+    if (error.empty()) {
+        auto id_raw = json["id"];
+        auto expr_raw = json["expr"];
+        if (!id_raw.is_null() && id_raw.is_number()) {
+            uint32_t id = id_raw.int_value();
+            std::string expr;
+            if (!expr_raw.is_null() && expr_raw.is_string()) {
+                expr = expr_raw.string_value();
+            }
+            return std::make_pair(id, expr);
+        }
+    }
+    return std::nullopt;
+}
+
+void set_error(int error_code, const std::string &error_message, httplib::Response &res) {
+    res.status = error_code;
+    res.set_content(error_message, "text/plain");
+}
+
 void initialize_runtime() {
     using namespace httplib;
     http_server = std::make_unique<Server>();
 
     // setup call backs
-    http_server->Get("/breakpoint", [](const Request &req, Response &res) {
+    http_server->Get(R"(/breakpoint/(.*))", [](const Request &req, Response &res) {
         vpi_lock.lock();
-        auto bp = get_breakpoint(req.body, res);
+        auto op_fn_ln = get_fn_ln(req.matches.size() > 1 ? req.matches[1].str(): "");
+        if (op_fn_ln) {
+            auto const &[fn, ln] = *op_fn_ln;
+            auto bps = get_breakpoint(fn, ln);
+            set_breakpoint_content(bps, res);
+        } else {
+            set_error(401, "Invalid breakpoint request", res);
+        }
         vpi_lock.unlock();
     });
 
     http_server->Post("/breakpoint", [](const Request &req, Response &res) {
         vpi_lock.lock();
-        auto bps = get_breakpoint(req.body, res);
-        if (!bps.empty()) {
-            for (auto const &bp : bps) {
-                add_break_point(bp.first);
-                add_breakpoint_expr(bp.first, bp.second);
+        auto bp_info = parse_bp_json(req.body);
+        if (bp_info) {
+            auto const &[bp_id, expr] = *bp_info;
+            add_break_point(bp_id);
+            if (!expr.empty()) {
+                add_breakpoint_expr(bp_id, expr);
             }
+        } else {
+            set_error(401, "Invalid breakpoint request", res);
         }
         vpi_lock.unlock();
     });
 
     http_server->Delete("/breakpoint", [](const Request &req, Response &res) {
         vpi_lock.lock();
-        auto bps = get_breakpoint(req.body, res);
-        if (db_ && !bps.empty()) {
-            for (auto const &bp : bps) {
-                remove_break_point(bp.first);
-                remove_expr(bp.first);
+        auto op_fn_ln = get_fn_ln(req.matches.size() > 1 ? req.matches[1].str(): "");
+        if (op_fn_ln) {
+            auto const &[fn, ln] = *op_fn_ln;
+            auto bps = get_breakpoint(fn, ln);
+            if (db_ && !bps.empty()) {
+                for (auto const &[id, col] : bps) {
+                    remove_break_point(id);
+                    remove_expr(id);
 
-                printf("Breakpoint removed from %d\n", bp.first);
+                    printf("Breakpoint removed from %d\n", id);
+                }
+            } else {
+                res.status = 401;
+                res.set_content("ERROR", "text/plain");
             }
         } else {
-            res.status = 401;
-            res.set_content("ERROR", "text/plain");
+            set_error(401, "ERROR", res);
         }
         vpi_lock.unlock();
     });

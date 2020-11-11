@@ -67,3 +67,7 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
     str.replace(start_pos, from.length(), to_path);
     return true;
 }
+
+bool is_digits(const std::string &str) {
+    return std::all_of(str.begin(), str.end(), ::isdigit);
+}
