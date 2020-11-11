@@ -13,9 +13,9 @@
 [submodule "extern/kratos"]
 	path = extern/kratos
 	url = https://github.com/Kuree/kratos
-[submodule "extern/json11"]
-	path = extern/json11
-	url = https://github.com/dropbox/json11
 [submodule "extern/exprtk"]
 	path = extern/exprtk
 	url = https://github.com/Kuree/exprtk
+[submodule "extern/rapidjson"]
+	path = extern/rapidjson
+	url = https://github.com/Tencent/rapidjson
