@@ -21,7 +21,6 @@ find_package(Threads REQUIRED)
 # extern library
 add_subdirectory(extern/fmt)
 add_subdirectory(extern/sqlite)
-add_subdirectory(extern/json11)
 add_subdirectory(extern/kratos/extern/googletest/)
 
 add_subdirectory(src)

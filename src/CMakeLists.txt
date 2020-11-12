@@ -5,6 +5,7 @@ add_library(kratos-runtime SHARED control.hh control.cc util.hh util.cc sim.cc s
 target_include_directories(kratos-runtime PRIVATE ../extern/cpp-httplib
         ../extern/fmt ../extern/sqlite_orm/include
         ../extern
-        ../extern/sqlite/include)
-target_link_libraries(kratos-runtime ${CMAKE_THREAD_LIBS_INIT} ${STATIC_FLAG} sqlite3 fmt json11
+        ../extern/sqlite/include
+        ../extern/rapidjson/include)
+target_link_libraries(kratos-runtime ${CMAKE_THREAD_LIBS_INIT} ${STATIC_FLAG} sqlite3 fmt
         stdc++fs)

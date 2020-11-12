@@ -12,7 +12,9 @@
 #include "expr.hh"
 #include "fmt/format.h"
 #include "httplib.h"
-#include "json11/json11.hpp"
+#include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 #include "sim.hh"
 #include "std/vpi_user.h"
 #include "util.hh"
@@ -81,6 +83,80 @@ void un_pause_sim() {
 // this is for vpi cb struct
 std::unordered_map<std::string, CbHandle *> cb_handle_map;
 
+template <class T>
+std::string to_string(T &d) {
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    d.Accept(writer);
+
+    std::string result = buffer.GetString();
+    // return by value
+    return result;
+}
+
+const rapidjson::Value &get_json_value(const rapidjson::Value &v, rapidjson::Document &) {
+    // noop
+    return v;
+}
+
+rapidjson::Value get_json_value(const std::string &v, rapidjson::Document &d) {
+    rapidjson::Value value(rapidjson::kStringType);
+    value.SetString(v.c_str(), d.GetAllocator());
+    return value;
+}
+
+rapidjson::Value get_json_value(uint32_t v, rapidjson::Document &d) {
+    rapidjson::Value value(rapidjson::kNumberType);
+    value.SetInt(static_cast<int>(v));
+    return value;
+}
+
+rapidjson::Value get_json_value(const std::vector<std::pair<std::string, std::string>> &array,
+                                rapidjson::Document &d) {
+    rapidjson::Value v(rapidjson::kArrayType);
+    for (auto const &[name, value] : array) {
+        rapidjson::Value entry(rapidjson::kObjectType);
+        entry.AddMember(get_json_value(name, d), get_json_value(value, d), d.GetAllocator());
+        v.PushBack(entry.Move(), d.GetAllocator());
+    }
+    return v;
+}
+
+rapidjson::Value get_json_value(const std::map<std::string, std::string> &map,
+                                rapidjson::Document &d) {
+    rapidjson::Value v(rapidjson::kArrayType);
+    for (auto const &[name, value] : map) {
+        rapidjson::Value entry(rapidjson::kObjectType);
+        entry.AddMember(get_json_value(name, d), get_json_value(value, d), d.GetAllocator());
+        v.PushBack(entry.Move(), d.GetAllocator());
+    }
+    return v;
+}
+
+rapidjson::Value get_json_value(const std::vector<std::string> &array, rapidjson::Document &d) {
+    rapidjson::Value v(rapidjson::kArrayType);
+    for (auto const &value : array) {
+        auto entry = get_json_value(value, d);
+        v.PushBack(entry.Move(), d.GetAllocator());
+    }
+    return v;
+}
+
+template <class T>
+void add_json_member(const std::string &name, const T &value, rapidjson::Document &d) {
+    if constexpr (std::is_base_of<const rapidjson::Value&, T>()) {
+        d.AddMember(get_json_value(name, d), value, d.GetAllocator());
+    } else {
+        d.AddMember(get_json_value(name, d), get_json_value(value, d), d.GetAllocator());
+    }
+}
+
+template <class T>
+void add_json_member(const std::string &name, const T &value, rapidjson::Value &v,
+                     rapidjson::Document &d) {
+    v.AddMember(get_json_value(name, d), get_json_value(value, d), d.GetAllocator());
+}
+
 std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
     std::vector<std::pair<std::string, std::string>> gen_vars;
     std::vector<std::pair<std::string, std::string>> local_vars;
@@ -136,15 +212,21 @@ std::string get_breakpoint_value(uint32_t instance_id, uint32_t id) {
         }
         instance_name = db_->get_instance_name(instance_id);
     }
-    json11::Json result = json11::Json::object({{"id", fmt::format("{0}", id)},
-                                                {"local", local_vars},
-                                                {"generator", gen_vars},
-                                                {"filename", filename},
-                                                {"line_num", line_num},
-                                                {"instance_name", instance_name},
-                                                {"instance_id", std::to_string(instance_id)}});
-    return result.dump();
+    rapidjson::Document d(rapidjson::kObjectType);
+
+    add_json_member("id", id, d);
+    add_json_member("local", local_vars, d);
+    add_json_member("generator", gen_vars, d);
+    add_json_member("filename", filename, d);
+    add_json_member("line_num", line_num, d);
+    add_json_member("instance_name", instance_name, d);
+    add_json_member("instance_id", instance_id, d);
+
+    std::string result = to_string(d);
+    // return by value
+    return result;
 }
+
 std::string process_var_front_name(const std::string &name) {
     std::string var_name;
     var_name.reserve(name.size());
@@ -180,10 +262,11 @@ void breakpoint_trace(uint32_t instance_id, uint32_t id) {
     }
 }
 
-json11::Json::object get_graph_value() {
+std::pair<std::string, std::map<std::string, std::string>> get_graph_value() {
     auto time_val = get_simulation_time("");
     std::string time = "ERROR";
     if (time_val) time = *time_val;
+    if (!db_) return {};
     // we need to pull out all the values from the connections
     auto modules = db_->get_hierarchy(current_scope);
     std::map<std::string, std::string> values;
@@ -202,7 +285,7 @@ json11::Json::object get_graph_value() {
             }
         }
     }
-    return json11::Json::object({{"time", time}, {"value", values}});
+    return std::make_pair(time, values);
 }
 
 std::string get_context_value(std::string filename, uint32_t line_num) {
@@ -227,7 +310,13 @@ std::string get_context_value(std::string filename, uint32_t line_num) {
                 auto v = get_breakpoint_value(bp.instance_id, bp.breakpoint_id);
                 result.emplace_back(v);
             }
-            return json11::Json(result).dump();
+
+            rapidjson::Document d(rapidjson::kArrayType);
+            auto &allocator = d.GetAllocator();
+            for (auto &entry : result) {
+                d.PushBack(get_json_value(entry, d).Move(), allocator);
+            }
+            return to_string(d);
         }
     }
     return "{}";
@@ -238,9 +327,13 @@ void breakpoint_clock(void) {
         has_paused_on_clock = true;
         printf("Pause on clock edge\n");
         if (http_client && db_) {
-            auto content = json11::Json(get_graph_value());
+            rapidjson::Document d(rapidjson::kObjectType);
+            auto const &[time, values] = get_graph_value();
+            add_json_member("time", time, d);
+            add_json_member("value", values, d);
+            auto content = to_string(d);
             http_client->Post("/status/clock",
-                              content.dump(),  // NOLINT
+                              content,  // NOLINT
                               "application/json");
         }
         if (http_client || use_client_request) pause_sim();
@@ -279,21 +372,16 @@ void exception(uint32_t instance_id, uint32_t id) {
     }
 }
 
-std::string get_breakpoint_content(
-    const std::vector<std::pair<uint32_t, uint32_t>> &bps) {
-    struct BPInfo {
-        uint32_t id;
-        uint32_t col;
-        [[nodiscard]] json11::Json to_json() const {
-            return json11::Json::object{{{"id", (int)id}, {"col", (int)col}}};
-        }
-    };
-    std::vector<BPInfo> info_list;
-    info_list.reserve(bps.size());
+std::string get_breakpoint_content(const std::vector<std::pair<uint32_t, uint32_t>> &bps) {
+    rapidjson::Document d(rapidjson::kArrayType);
+    auto &allocator = d.GetAllocator();
     for (auto const &[bp, col] : bps) {
-        info_list.emplace_back(BPInfo{.id = bp, .col = col});
+        rapidjson::Value v(rapidjson::kObjectType);
+        add_json_member("id", bp, v, d);
+        add_json_member("col", col, v, d);
+        d.PushBack(v.Move(), allocator);
     }
-    auto content = json11::Json(info_list).dump();
+    auto content = to_string(d);
     return content;
 }
 
@@ -305,7 +393,7 @@ void set_breakpoint_content(const std::vector<std::pair<uint32_t, uint32_t>> &bp
 }
 
 std::vector<std::pair<uint32_t, uint32_t>> get_breakpoint(const std::string &filename,
-                                                                        uint32_t line_num) {
+                                                          uint32_t line_num) {
     // hacky way
     if (!db_) {
         while (!db_) {
@@ -432,16 +520,7 @@ std::vector<uint32_t> get_breakpoint_filename(std::string filename, httplib::Res
             res.set_content("Okay", "text/plain");
             if (!src_path.empty() && !dst_path.empty()) replace(filename, src_path, dst_path);
             auto bps = db_->get_all_breakpoints(filename);
-            struct BP {
-                uint32_t id;
-                [[nodiscard]] std::string to_json() const { return fmt::format("{0}", id); }
-            };
-            std::vector<BP> json_bp;
-            json_bp.reserve(bps.size());
-            for (auto const &bp : bps) {
-                json_bp.emplace_back(BP{bp});
-            }
-            std::string value = json11::Json(json_bp).dump();
+
             return bps;
         }
     }
@@ -504,8 +583,11 @@ int monitor_signal(p_cb_data cb_data_p) {
     std::string value = fmt::format("{0}", cb_data_p->value->value.integer);
     if (http_client) {
         printf("sending value %s\n", signal_name.c_str());
-        auto json = json11::Json(json11::Json::object{{"handle", signal_name}, {"value", value}});
-        http_client->Post("/value", json.dump(), "application/json");
+        rapidjson::Document d;
+        add_json_member("handle", signal_name, d);
+        add_json_member("value", value, d);
+        auto content = to_string(d);
+        http_client->Post("/value", content, "application/json");
     }
     return 0;
 }
@@ -582,26 +664,18 @@ void remove_all_monitor() {
 std::string get_connection_str(const std::string &handle_name, bool is_from) {
     auto result =
         is_from ? db_->get_connection_from(handle_name) : db_->get_connection_to(handle_name);
-    struct ConnectionWrapper {
-        std::string handle_from;
-        std::string var_from;
-        std::string handle_to;
-        std::string var_to;
+    rapidjson::Document d(rapidjson::kArrayType);
+    auto &allocator = d.GetAllocator();
 
-        [[nodiscard]] json11::Json to_json() const {
-            return json11::Json::object{{{"handle_from", handle_from},
-                                         {"var_from", var_from},
-                                         {"handle_to", handle_to},
-                                         {"var_to", var_to}}};
-        }
-    };
-    std::vector<ConnectionWrapper> r;
-    r.reserve(result.size());
     for (auto const &entry : result) {
-        r.emplace_back(
-            ConnectionWrapper{entry.handle_from, entry.var_from, entry.handle_to, entry.var_to});
+        rapidjson::Value v(rapidjson::kObjectType);
+        add_json_member("handle_from", entry.handle_from, v, d);
+        add_json_member("var_from", entry.var_from, v, d);
+        add_json_member("handle_to", entry.handle_to, v, d);
+        add_json_member("var_to", entry.var_to, v, d);
+        d.PushBack(v.Move(), allocator);
     }
-    auto content = json11::Json(r).dump();
+    auto content = to_string(d);
     return content;
 }
 
@@ -633,16 +707,14 @@ std::optional<std::pair<std::string, uint32_t>> get_fn_ln(const std::string &pat
 }
 
 std::optional<std::pair<uint32_t, std::string>> parse_bp_json(const std::string &content) {
-    std::string error;
-    auto json = json11::Json::parse(content, error);
-    if (error.empty()) {
-        auto id_raw = json["id"];
-        auto expr_raw = json["expr"];
-        if (!id_raw.is_null() && id_raw.is_number()) {
-            uint32_t id = id_raw.int_value();
+    rapidjson::Document d;
+    d.Parse(content.c_str());
+    if (!d.HasParseError()) {
+        if (d.HasMember("id") && d["id"].IsNumber()) {
+            auto id = static_cast<uint32_t>(d["id"].GetInt());
             std::string expr;
-            if (!expr_raw.is_null() && expr_raw.is_string()) {
-                expr = expr_raw.string_value();
+            if (d.HasMember("expr") && d["expr"].IsString()) {
+                expr = d["expr"].GetString();
             }
             return std::make_pair(id, expr);
         }
@@ -662,7 +734,7 @@ void initialize_runtime() {
     // setup call backs
     http_server->Get(R"(/breakpoint/(.*))", [](const Request &req, Response &res) {
         vpi_lock.lock();
-        auto op_fn_ln = get_fn_ln(req.matches.size() > 1 ? req.matches[1].str(): "");
+        auto op_fn_ln = get_fn_ln(req.matches.size() > 1 ? req.matches[1].str() : "");
         if (op_fn_ln) {
             auto const &[fn, ln] = *op_fn_ln;
             auto bps = get_breakpoint(fn, ln);
@@ -690,7 +762,7 @@ void initialize_runtime() {
 
     http_server->Delete("/breakpoint", [](const Request &req, Response &res) {
         vpi_lock.lock();
-        auto op_fn_ln = get_fn_ln(req.matches.size() > 1 ? req.matches[1].str(): "");
+        auto op_fn_ln = get_fn_ln(req.matches.size() > 1 ? req.matches[1].str() : "");
         if (op_fn_ln) {
             auto const &[fn, ln] = *op_fn_ln;
             auto bps = get_breakpoint(fn, ln);
@@ -747,16 +819,12 @@ void initialize_runtime() {
     http_server->Get("/files", [](const Request &req, Response &res) {
         if (db_) {
             auto names = db_->get_all_files();
-            struct StrValue {
-                std::string value;
-                [[nodiscard]] std::string to_json() const { return value; }
-            };
-            std::vector<StrValue> values;
-            values.reserve(names.size());
+            rapidjson::Document d(rapidjson::kArrayType);
+            auto &allocator = d.GetAllocator();
             for (auto const &name : names) {
-                values.emplace_back(StrValue{name});
+                d.PushBack(get_json_value(name, d), allocator);
             }
-            auto content = json11::Json(values).dump();
+            auto content = to_string(d);
             res.set_content(content, "application/json");
             res.status = 200;
         } else {
@@ -778,20 +846,14 @@ void initialize_runtime() {
     });
 
     http_server->Get("/values", [](const Request &req, Response &res) {
-        std::string err;
-        auto json = json11::Json::parse(req.body, err);
-        if (err.empty()) {
-            auto const &lst = json.array_items();
-            struct Entry {
-                std::string name;
-                std::string value;
-                [[nodiscard]] json11::Json to_json() const {
-                    return json11::Json::object{{{"name", name}, {"value", value}}};
-                }
-            };
-            std::vector<Entry> result;
+        rapidjson::Document d;
+        d.Parse(req.body.c_str());
+        if (!d.HasParseError()) {
+            auto const &lst = d.GetArray();
+            rapidjson::Document result(rapidjson::kArrayType);
+            auto &allocator = result.GetAllocator();
             for (auto const &entry : lst) {
-                auto const &name = entry.string_value();
+                std::string name = entry.GetString();
                 auto v = get_value(name);
                 std::string value;
                 if (v) {
@@ -800,10 +862,13 @@ void initialize_runtime() {
                 } else {
                     value = "ERROR";
                 }
-                result.emplace_back(Entry{name, value});
+                rapidjson::Value e_v(rapidjson::kObjectType);
+                add_json_member("name", name, e_v, result);
+                add_json_member("value", value, e_v, result);
+                result.PushBack(e_v.Move(), allocator);
             }
             res.status = 200;
-            auto content = json11::Json(result).dump();
+            auto content = to_string(result);
             res.set_content(content, "application/text");
         } else {
             res.status = 401;
@@ -904,11 +969,16 @@ void initialize_runtime() {
             }
             std::string content;
             if (has_paused_on_clock) {
-                auto values = get_graph_value();
-                content =
-                    json11::Json(json11::Json::object({{"name", names}, {"value", values}})).dump();
+                rapidjson::Document d(rapidjson::kObjectType);
+                auto const &[time, values] = get_graph_value();
+                add_json_member("name", names, d);
+                rapidjson::Value v;
+                add_json_member("value", v, d);
+                content = to_string(d);
             } else {
-                content = json11::Json(json11::Json::object({{"name", names}})).dump();
+                rapidjson::Document d(rapidjson::kObjectType);
+                add_json_member("name", names, d);
+                content = to_string(d);
             }
             res.status = 200;
             res.set_content(content, "application/json");
@@ -945,57 +1015,66 @@ void initialize_runtime() {
     http_server->Post("/connect", [](const Request &req, Response &res) {
         // parse the content
         auto const &body = req.body;
-        std::string err;
-        auto payload = json11::Json::parse(body, err);
-        auto ip_json = payload["ip"];
-        auto port_json = payload["port"];
-        auto db_json = payload["database"];
-        auto src_path_json = payload["src_path"];
-        auto dst_path_json = payload["dst_path"];
-        // this is a short cut
-        if (!ip_json.is_null() && ip_json.is_string()) {
-            if (ip_json.string_value() == "255.255.255.255") {
-                // this is the client no server mode
-                res.status = 200;
-                res.set_content("Okay", "text/plain");
-                use_client_request = true;
-                return;
-            }
-        }
-
-        // this is for remote debugging path translation
-        if (!src_path_json.is_null() && !dst_path_json.is_null() && src_path_json.is_string() &&
-            dst_path_json.is_string()) {
-            src_path = src_path_json.string_value();
-            dst_path = dst_path_json.string_value();
-        }
-
-        bool has_error = false;
-        if (port_json.is_null() || ip_json.is_null() || db_json.is_null() ||
-            !port_json.is_number() || !ip_json.is_string() || !db_json.is_string()) {
+        std::string ip, db_filename;
+        int port;
+        rapidjson::Document d;
+        d.Parse(req.body.c_str());
+        bool has_error = d.HasParseError();
+        if (!d.HasMember("ip") || !d.HasMember("port") || !d.HasMember("database")) {
             has_error = true;
-        }
-        if (!has_error) {
-            auto const &ip = ip_json.string_value();
-            auto port = static_cast<int>(port_json.number_value());
-            auto db_filename = db_json.string_value();
-            // convert db_filename to the dst one
-            if (!src_path.empty() && !dst_path.empty()) {
-                replace(db_filename, src_path, dst_path);
+        } else {
+            auto &ip_json = d["ip"];
+            auto &port_json = d["port"];
+            auto &db_json = d["database"];
+
+            // this is a short cut
+            if (ip_json.IsString()) {
+                if (std::string(ip_json.GetString()) == "255.255.255.255") {
+                    // this is the client no server mode
+                    res.status = 200;
+                    res.set_content("Okay", "text/plain");
+                    use_client_request = true;
+                    return;
+                }
             }
 
-            if (!std::filesystem::exists(db_filename)) {
-                has_error = true;
-            } else {
-                try {
-                    http_client = std::make_unique<Client>(ip.c_str(), port);
-                    // load up the database
-                    db_ = std::make_unique<Database>(db_filename);
-                    printf("Debugger connected to %s:%d\n", ip.c_str(), port);
-                } catch (...) {
-                    http_client = nullptr;
-                    db_ = nullptr;
+            // this is for remote debugging path translation
+            if (d.HasMember("src_path") && d.HasMember("dst_path")) {
+                auto &src_path_json = d["src_path"];
+                auto &dst_path_json = d["dst_path"];
+                if (src_path_json.IsString() && dst_path_json.IsString()) {
+                    src_path = src_path_json.GetString();
+                    dst_path = dst_path_json.GetString();
+                } else {
                     has_error = true;
+                }
+            }
+
+            if (!port_json.IsNumber() || !ip_json.IsString() || !db_json.IsString()) {
+                has_error = true;
+            }
+            if (!has_error) {
+                ip = ip_json.GetString();
+                port = static_cast<int>(port_json.GetInt());
+                db_filename = db_json.GetString();
+                // convert db_filename to the dst one
+                if (!src_path.empty() && !dst_path.empty()) {
+                    replace(db_filename, src_path, dst_path);
+                }
+
+                if (!std::filesystem::exists(db_filename)) {
+                    has_error = true;
+                } else {
+                    try {
+                        http_client = std::make_unique<Client>(ip.c_str(), port);
+                        // load up the database
+                        db_ = std::make_unique<Database>(db_filename);
+                        printf("Debugger connected to %s:%d\n", ip.c_str(), port);
+                    } catch (...) {
+                        http_client = nullptr;
+                        db_ = nullptr;
+                        has_error = true;
+                    }
                 }
             }
         }
